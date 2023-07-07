@@ -1,7 +1,5 @@
 use core::panic;
-
 use syn::{DeriveInput, Data, Attribute, parenthesized, LitStr, LitInt};
-
 use proc_macro::TokenStream;
 use quote::quote;
 
@@ -25,8 +23,38 @@ pub fn derive_termination(steam: TokenStream) -> TokenStream {
         let exit_code = variant_attributes.exit_code.unwrap_or(1);
        quote! { #name::#variant_name => #exit_code.into(), }
     });
+    let debug_impl = variants.iter().map(|variant| {
+        let variant_name = &variant.ident;
+        let variant_attributes = parse_helper_attribute_values(&variant.attrs).unwrap();
+        if let Some(msg) = variant_attributes.message {
+            quote! { #name::#variant_name => write!(f, "{}", #msg), }
+       } else {
+            quote! { #name::#variant_name => write!(f, "Debug"), }
+       }
+    });
 
-    let generated = quote! {
+    //Source: https://stackoverflow.com/questions/71720817/check-if-a-trait-is-implemented-or-not
+    let trait_macro = quote! {
+        macro_rules! is_trait{
+            ($name:ty, $trait_name:path)=>{{
+                trait __InnerMarkerTrait{
+                    fn __is_trait_inner_method()->bool{
+                        false
+                    }
+                }
+                struct __TraitTest<T>(T);
+                impl<T:$trait_name> __TraitTest<T> {
+                    fn __is_trait_inner_method()->bool{
+                        true
+                    }
+                }
+                impl<T> __InnerMarkerTrait for __TraitTest<T>{}
+                __TraitTest::<$name>::__is_trait_inner_method()
+            }}
+        }
+    };
+
+    let generate = quote! {
         impl std::process::Termination for #name {
             fn report(self) -> std::process::ExitCode {
                 match self {
@@ -34,15 +62,22 @@ pub fn derive_termination(steam: TokenStream) -> TokenStream {
                 }
             }
         }
-
+  
         impl std::fmt::Debug for #name {
             fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-                write!(f, "request failed")
+                #trait_macro
+                if is_trait!(Self, std::fmt::Display) {
+                    write!(f, "{}", self)
+                } else {
+                    match self {
+                        #(#debug_impl)*
+                    }
+                }
             }
         }
     };
 
-    generated.into()
+    generate.into()
 }
 
 fn parse_helper_attribute_values(attributes: &[Attribute]) -> Result<ParsedAttribute, String> {
