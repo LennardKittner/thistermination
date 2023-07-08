@@ -1,7 +1,8 @@
 use core::panic;
-use syn::{DeriveInput, Data, Attribute, parenthesized, LitStr, LitInt};
+use syn::{DeriveInput, Data, Attribute, parenthesized, LitStr, LitInt, FieldsNamed, FieldsUnnamed};
 use proc_macro::TokenStream;
 use quote::quote;
+use proc_macro2::{TokenStream as TokenStream2, Ident, Span};
 
 #[derive(Debug)]
 struct ParsedAttribute {
@@ -20,21 +21,21 @@ pub fn derive_termination(steam: TokenStream) -> TokenStream {
     let termination_impl = variants.iter().map(|variant| {
         let variant_name = &variant.ident;
         let variant_attributes = parse_helper_attribute_values(&variant.attrs).unwrap();
-        if let Some(exit_code) = variant_attributes.exit_code {
-            quote! { #name::#variant_name => #exit_code.into(), }
-        } else { 
-            quote! { #name::#variant_name => std::process::ExitCode::FAILURE, }
+        match &variant.fields {
+            syn::Fields::Named(f) => termination_impl_named(name, variant_name, f, &variant_attributes),
+            syn::Fields::Unnamed(f) => termination_impl_unnamed(name, variant_name, f, &variant_attributes),
+            syn::Fields::Unit => termination_impl_unit(name, variant_name, &variant_attributes),
         }
     });
     //TODO: maybe another macro that replicates derive Debug
     let debug_impl = variants.iter().map(|variant| {
         let variant_name: &syn::Ident = &variant.ident;
         let variant_attributes = parse_helper_attribute_values(&variant.attrs).unwrap();
-        if let Some(msg) = variant_attributes.message {
-            quote! { #name::#variant_name => write!(f, "{}", #msg), }
-       } else {
-            quote! { #name::#variant_name => write!(f, "{}", self), }
-       }
+        match &variant.fields {
+            syn::Fields::Named(f) => debug_impl_named(name, variant_name, f, &variant_attributes),
+            syn::Fields::Unnamed(f) => debug_impl_unnamed(name, variant_name, f, &variant_attributes),
+            syn::Fields::Unit => debug_impl_unit(name, variant_name, &variant_attributes),
+        }
     });
 
     let generate = quote! {
@@ -56,6 +57,80 @@ pub fn derive_termination(steam: TokenStream) -> TokenStream {
     };
 
     generate.into()
+}
+
+fn termination_impl_named(name: &Ident, variant_name: &Ident, fields: &FieldsNamed, attribute: &ParsedAttribute) -> TokenStream2 {
+    let field_names = fields.named.iter().map(|field| &field.ident);
+    if let Some(exit_code) = attribute.exit_code {
+        quote! { #name::#variant_name { #(ref #field_names),* } => #exit_code.into(), }
+    } else { 
+        quote! { #name::#variant_name { #(ref #field_names),* } => std::process::ExitCode::FAILURE, }
+    }
+}
+
+fn termination_impl_unnamed(name: &Ident, variant_name: &Ident, fields: &FieldsUnnamed, attribute: &ParsedAttribute) -> TokenStream2 {
+    if fields.unnamed.len() == 1 {
+        let field_name = syn::Ident::new("field_0", Span::call_site());
+        if let Some(exit_code) = attribute.exit_code {
+            quote! { #name::#variant_name(ref #field_name) => #exit_code.into(), }
+        } else { 
+            quote! { #name::#variant_name(ref #field_name) => std::process::ExitCode::FAILURE, }
+        }
+    } else {
+        let field_names = fields.unnamed.iter().enumerate().map(|(i, _)| {
+            syn::Ident::new(&format!("field_{}", i), Span::call_site())
+        });
+        if let Some(exit_code) = attribute.exit_code {
+            quote! { #name::#variant_name( #(ref #field_names),* ) => #exit_code.into(), }
+        } else { 
+            quote! { #name::#variant_name( #(ref #field_names),* ) => std::process::ExitCode::FAILURE, }
+        }
+    }
+}
+
+fn termination_impl_unit(name: &Ident, variant_name: &Ident, attribute: &ParsedAttribute) -> TokenStream2 {
+    if let Some(exit_code) = attribute.exit_code {
+        quote! { #name::#variant_name => #exit_code.into(), }
+    } else { 
+        quote! { #name::#variant_name => std::process::ExitCode::FAILURE, }
+    }
+}
+
+fn debug_impl_named(name: &Ident, variant_name: &Ident, fields: &FieldsNamed, attribute: &ParsedAttribute) -> TokenStream2 {
+    let field_names = fields.named.iter().map(|field| &field.ident);
+    if let Some(msg) = &attribute.message {
+        quote! { #name::#variant_name { #(ref #field_names),* } => write!(f, "{}", #msg), }
+    } else { 
+        quote! { #name::#variant_name { #(ref #field_names),* } => write!(f, "{}", self), }
+    }
+}
+
+fn debug_impl_unnamed(name: &Ident, variant_name: &Ident, fields: &FieldsUnnamed, attribute: &ParsedAttribute) -> TokenStream2 {
+    if fields.unnamed.len() == 1 {
+        let field_name = syn::Ident::new("field_0", Span::call_site());
+        if let Some(msg) = &attribute.message {
+            quote! { #name::#variant_name(ref #field_name) => write!(f, "{}", #msg), }
+        } else { 
+            quote! { #name::#variant_name(ref #field_name) => write!(f, "{}", self), }
+        }
+    } else {
+        let field_names = fields.unnamed.iter().enumerate().map(|(i, _)| {
+            syn::Ident::new(&format!("field_{}", i), Span::call_site())
+        });
+        if let Some(msg) = &attribute.message {
+            quote! { #name::#variant_name( #(ref #field_names),* ) => write!(f, "{}", #msg), }
+        } else { 
+            quote! { #name::#variant_name( #(ref #field_names),* ) => write!(f, "{}", self), }
+        }
+    }
+}
+
+fn debug_impl_unit(name: &Ident, variant_name: &Ident, attribute: &ParsedAttribute) -> TokenStream2 {
+    if let Some(msg) = &attribute.message {
+        quote! { #name::#variant_name => write!(f, "{}", #msg), }
+    } else {
+        quote! { #name::#variant_name => write!(f, "{}", self), }
+    }
 }
 
 fn parse_helper_attribute_values(attributes: &[Attribute]) -> Result<ParsedAttribute, String> {
