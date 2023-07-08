@@ -20,39 +20,22 @@ pub fn derive_termination(steam: TokenStream) -> TokenStream {
     let termination_impl = variants.iter().map(|variant| {
         let variant_name = &variant.ident;
         let variant_attributes = parse_helper_attribute_values(&variant.attrs).unwrap();
-        let exit_code = variant_attributes.exit_code.unwrap_or(1);
-       quote! { #name::#variant_name => #exit_code.into(), }
+        if let Some(exit_code) = variant_attributes.exit_code {
+            quote! { #name::#variant_name => #exit_code.into(), }
+        } else { 
+            quote! { #name::#variant_name => std::process::ExitCode::FAILURE, }
+        }
     });
+    //TODO: maybe another macro that replicates derive Debug
     let debug_impl = variants.iter().map(|variant| {
-        let variant_name = &variant.ident;
+        let variant_name: &syn::Ident = &variant.ident;
         let variant_attributes = parse_helper_attribute_values(&variant.attrs).unwrap();
         if let Some(msg) = variant_attributes.message {
             quote! { #name::#variant_name => write!(f, "{}", #msg), }
        } else {
-            quote! { #name::#variant_name => write!(f, "Debug"), }
+            quote! { #name::#variant_name => write!(f, "{}", self), }
        }
     });
-
-    //Source: https://stackoverflow.com/questions/71720817/check-if-a-trait-is-implemented-or-not
-    let trait_macro = quote! {
-        macro_rules! is_trait{
-            ($name:ty, $trait_name:path)=>{{
-                trait __InnerMarkerTrait{
-                    fn __is_trait_inner_method()->bool{
-                        false
-                    }
-                }
-                struct __TraitTest<T>(T);
-                impl<T:$trait_name> __TraitTest<T> {
-                    fn __is_trait_inner_method()->bool{
-                        true
-                    }
-                }
-                impl<T> __InnerMarkerTrait for __TraitTest<T>{}
-                __TraitTest::<$name>::__is_trait_inner_method()
-            }}
-        }
-    };
 
     let generate = quote! {
         impl std::process::Termination for #name {
@@ -65,13 +48,8 @@ pub fn derive_termination(steam: TokenStream) -> TokenStream {
   
         impl std::fmt::Debug for #name {
             fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-                #trait_macro
-                if is_trait!(Self, std::fmt::Display) {
-                    write!(f, "{}", self)
-                } else {
-                    match self {
-                        #(#debug_impl)*
-                    }
+                match self {
+                    #(#debug_impl)*
                 }
             }
         }
@@ -88,7 +66,7 @@ fn parse_helper_attribute_values(attributes: &[Attribute]) -> Result<ParsedAttri
 
     for attribute in attributes {
         if !attribute.path().is_ident("termination") {
-            return Err(format!("unknown ident {:?}", attribute.path().get_ident()));
+            continue;
         }
         let a  = attribute.parse_nested_meta(|meta| {
             if meta.path.is_ident("exit_code") {
