@@ -1,14 +1,18 @@
 use core::panic;
 use regex::Regex;
-use syn::{DeriveInput, Data, Attribute, parenthesized, LitStr, LitInt, FieldsNamed, FieldsUnnamed};
+use syn::{DeriveInput, Data, Attribute, parenthesized, LitStr, LitInt, FieldsNamed, FieldsUnnamed, Meta, Type, Token, parse::Parse};
 use proc_macro::TokenStream;
 use quote::quote;
 use proc_macro2::{TokenStream as TokenStream2, Ident, Span};
 
-#[derive(Debug)]
 struct ParsedAttribute {
     exit_code: Option<u8>,
-    message: Option<String>,
+    message: Option<Message>,
+}
+
+struct Message {
+    format_string: String,
+    format_string_arguments: Option<TokenStream2>,
 }
 
 #[proc_macro_derive(Termination, attributes(termination))]
@@ -90,41 +94,36 @@ fn termination_impl_unit(name: &Ident, variant_name: &Ident, attribute: &ParsedA
 
 fn debug_impl_named(name: &Ident, variant_name: &Ident, fields: &FieldsNamed, attribute: &ParsedAttribute) -> TokenStream2 {
     let field_names = fields.named.iter().map(|field| &field.ident);
-    if let Some(msg) = &attribute.message {
-        quote! { #name::#variant_name { #(ref #field_names),* } => write!(f, #msg), }
+    if let Some(Message { format_string, format_string_arguments }) = &attribute.message {
+        quote! { #name::#variant_name { #(ref #field_names),* } => write!(f, #format_string, #format_string_arguments), }
     } else { 
         quote! { #name::#variant_name { #(ref #field_names),* } => write!(f, "{}", self), }
     }
 }
 
-fn get_unnamed_fields(msg: &str) -> Vec<Ident> {
-    let mut fields: Vec<String> = Vec::new();
+fn get_formatted_string_with_fields(msg: &str, prefix: &str) -> String {
     let regex = Regex::new(r#"(?:\{(?:(\d+)(?::[^\}]+)?)\})"#).unwrap();
-    for capture in regex.captures_iter(msg) {
-        if let Some(field) = capture.get(1) {
-            if !fields.contains(&field.as_str().to_string()) {
-                fields.push(field.as_str().to_string());
-            }
-        }
-    }
-    fields.iter().map(|field| Ident::new(&format!("field_{}",field), Span::call_site())).collect()
-}
+    regex.replace_all(msg, |caps: &regex::Captures| {
+        let field = caps.get(1).unwrap().as_str();
+        format!("{{{}{}}}",prefix, field)
+    }).to_string()
+ }
 
 fn debug_impl_unnamed(name: &Ident, variant_name: &Ident, fields: &FieldsUnnamed, attribute: &ParsedAttribute) -> TokenStream2 {
     let field_names = fields.unnamed.iter().enumerate().map(|(i, _)| {
         syn::Ident::new(&format!("field_{}", i), Span::call_site())
     });
-    if let Some(msg) = &attribute.message {
-        let fields = get_unnamed_fields(msg);
-        quote! { #name::#variant_name(#(#field_names),*) => write!(f, #msg, #(#fields),*), }
+    if let Some(Message { format_string, format_string_arguments }) = &attribute.message {
+        let format_string = get_formatted_string_with_fields(format_string, "field_");
+        quote! { #name::#variant_name(#(#field_names),*) => write!(f, #format_string, #format_string_arguments), }
     } else {
         quote! { #name::#variant_name(#(#field_names),*) => write!(f, "{}", self), }
     }
 }
 
 fn debug_impl_unit(name: &Ident, variant_name: &Ident, attribute: &ParsedAttribute) -> TokenStream2 {
-    if let Some(msg) = &attribute.message {
-        quote! { #name::#variant_name => write!(f, "{}", #msg), }
+    if let Some(Message { format_string, format_string_arguments }) = &attribute.message {
+        quote! { #name::#variant_name => write!(f, #format_string, #format_string_arguments), }
     } else {
         quote! { #name::#variant_name => write!(f, "{}", self), }
     }
@@ -157,7 +156,9 @@ fn parse_helper_attribute_values(attributes: &[Attribute]) -> Result<ParsedAttri
                 let content;
                 parenthesized!(content in meta.input);
                 let lit: LitStr = content.parse()?;
-                parsed_attribute.message = Some(lit.value());
+                //TODO: why is there no problem if the there is no rest?
+                let rest: TokenStream2 = content.parse()?;
+                parsed_attribute.message = Some(Message { format_string: lit.value(), format_string_arguments: Some(rest) });
                 return Ok(());
             }
             Err(meta.error(format!("unrecognized attribute {}", meta.path.get_ident().unwrap())))
