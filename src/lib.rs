@@ -91,7 +91,7 @@ fn termination_impl_unit(name: &Ident, variant_name: &Ident, attribute: &ParsedA
 fn debug_impl_named(name: &Ident, variant_name: &Ident, fields: &FieldsNamed, attribute: &ParsedAttribute) -> TokenStream2 {
     let field_names = fields.named.iter().map(|field| &field.ident);
     if let Some(msg) = &attribute.message {
-        quote! { #name::#variant_name { #(ref #field_names),* } => write!(f, "{}", #msg), }
+        quote! { #name::#variant_name { #(ref #field_names),* } => write!(f, #msg), }
     } else { 
         quote! { #name::#variant_name { #(ref #field_names),* } => write!(f, "{}", self), }
     }
@@ -99,14 +99,9 @@ fn debug_impl_named(name: &Ident, variant_name: &Ident, fields: &FieldsNamed, at
 
 fn get_unnamed_fields(msg: &str) -> Vec<Ident> {
     let mut fields: Vec<String> = Vec::new();
-    let regex = Regex::new(r#"(?:\{(\d+)\})|(?:\{(?:(\d+):[^\}]+)\})"#).unwrap();
+    let regex = Regex::new(r#"(?:\{(?:(\d+)(?::[^\}]+)?)\})"#).unwrap();
     for capture in regex.captures_iter(msg) {
         if let Some(field) = capture.get(1) {
-            if !fields.contains(&field.as_str().to_string()) {
-                fields.push(field.as_str().to_string());
-            }
-        }
-        if let Some(field) = capture.get(2) {
             if !fields.contains(&field.as_str().to_string()) {
                 fields.push(field.as_str().to_string());
             }
