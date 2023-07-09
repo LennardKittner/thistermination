@@ -1,4 +1,5 @@
 use core::panic;
+use regex::Regex;
 use syn::{DeriveInput, Data, Attribute, parenthesized, LitStr, LitInt, FieldsNamed, FieldsUnnamed};
 use proc_macro::TokenStream;
 use quote::quote;
@@ -16,7 +17,7 @@ pub fn derive_termination(steam: TokenStream) -> TokenStream {
     let name = &ast.ident;
     let variants = match ast.data {
         Data::Enum(ref data) => &data.variants,
-        _ => panic!("Termination can only be derived for enums"),
+        _ => panic!("thistermination can currently only be derived on enums"),
     };
     let termination_impl = variants.iter().map(|variant| {
         let variant_name = &variant.ident;
@@ -69,22 +70,13 @@ fn termination_impl_named(name: &Ident, variant_name: &Ident, fields: &FieldsNam
 }
 
 fn termination_impl_unnamed(name: &Ident, variant_name: &Ident, fields: &FieldsUnnamed, attribute: &ParsedAttribute) -> TokenStream2 {
-    if fields.unnamed.len() == 1 {
-        let field_name = syn::Ident::new("field_0", Span::call_site());
-        if let Some(exit_code) = attribute.exit_code {
-            quote! { #name::#variant_name(ref #field_name) => #exit_code.into(), }
-        } else { 
-            quote! { #name::#variant_name(ref #field_name) => std::process::ExitCode::FAILURE, }
-        }
-    } else {
-        let field_names = fields.unnamed.iter().enumerate().map(|(i, _)| {
-            syn::Ident::new(&format!("field_{}", i), Span::call_site())
-        });
-        if let Some(exit_code) = attribute.exit_code {
-            quote! { #name::#variant_name( #(ref #field_names),* ) => #exit_code.into(), }
-        } else { 
-            quote! { #name::#variant_name( #(ref #field_names),* ) => std::process::ExitCode::FAILURE, }
-        }
+    let field_names = fields.unnamed.iter().enumerate().map(|(i, _)| {
+        syn::Ident::new(&format!("field_{}", i), Span::call_site())
+    });
+    if let Some(exit_code) = attribute.exit_code {
+        quote! { #name::#variant_name( #(#field_names),* ) => #exit_code.into(), }
+    } else { 
+        quote! { #name::#variant_name( #(#field_names),* ) => std::process::ExitCode::FAILURE, }
     }
 }
 
@@ -105,23 +97,33 @@ fn debug_impl_named(name: &Ident, variant_name: &Ident, fields: &FieldsNamed, at
     }
 }
 
+fn get_unnamed_fields(msg: &str) -> Vec<Ident> {
+    let mut fields: Vec<String> = Vec::new();
+    let regex = Regex::new(r#"(?:\{(\d+)\})|(?:\{(?:(\d+):[^\}]+)\})"#).unwrap();
+    for capture in regex.captures_iter(msg) {
+        if let Some(field) = capture.get(1) {
+            if !fields.contains(&field.as_str().to_string()) {
+                fields.push(field.as_str().to_string());
+            }
+        }
+        if let Some(field) = capture.get(2) {
+            if !fields.contains(&field.as_str().to_string()) {
+                fields.push(field.as_str().to_string());
+            }
+        }
+    }
+    fields.iter().map(|field| Ident::new(&format!("field_{}",field), Span::call_site())).collect()
+}
+
 fn debug_impl_unnamed(name: &Ident, variant_name: &Ident, fields: &FieldsUnnamed, attribute: &ParsedAttribute) -> TokenStream2 {
-    if fields.unnamed.len() == 1 {
-        let field_name = syn::Ident::new("field_0", Span::call_site());
-        if let Some(msg) = &attribute.message {
-            quote! { #name::#variant_name(ref #field_name) => write!(f, "{}", #msg), }
-        } else { 
-            quote! { #name::#variant_name(ref #field_name) => write!(f, "{}", self), }
-        }
+    let field_names = fields.unnamed.iter().enumerate().map(|(i, _)| {
+        syn::Ident::new(&format!("field_{}", i), Span::call_site())
+    });
+    if let Some(msg) = &attribute.message {
+        let fields = get_unnamed_fields(msg);
+        quote! { #name::#variant_name(#(#field_names),*) => write!(f, #msg, #(#fields),*), }
     } else {
-        let field_names = fields.unnamed.iter().enumerate().map(|(i, _)| {
-            syn::Ident::new(&format!("field_{}", i), Span::call_site())
-        });
-        if let Some(msg) = &attribute.message {
-            quote! { #name::#variant_name( #(ref #field_names),* ) => write!(f, "{}", #msg), }
-        } else { 
-            quote! { #name::#variant_name( #(ref #field_names),* ) => write!(f, "{}", self), }
-        }
+        quote! { #name::#variant_name(#(#field_names),*) => write!(f, "{}", self), }
     }
 }
 
@@ -133,16 +135,21 @@ fn debug_impl_unit(name: &Ident, variant_name: &Ident, attribute: &ParsedAttribu
     }
 }
 
+//TODO: better error handling e.g. show error at specific attribute
 fn parse_helper_attribute_values(attributes: &[Attribute]) -> Result<ParsedAttribute, String> {
     let mut parsed_attribute = ParsedAttribute {
         exit_code: None,
         message: None,
     };
-
+    let mut found_attribute = false;
     for attribute in attributes {
         if !attribute.path().is_ident("termination") {
             continue;
         }
+        if found_attribute {
+            panic!("only one #[termination(...)] attribute is allowed")
+        }
+        found_attribute = true;
         let a  = attribute.parse_nested_meta(|meta| {
             if meta.path.is_ident("exit_code") {
                 let content;
