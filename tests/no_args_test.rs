@@ -2,10 +2,6 @@ use std::process::{Termination, ExitCode};
 
 use thistermination::Termination;
 
-//TODO: Tests
-// without exitcode or message
-// with thiserror
-
 #[derive(Termination)]
 enum Test {
     #[termination(exit_code(1), msg("unit a"))]
