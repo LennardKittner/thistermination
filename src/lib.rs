@@ -1,6 +1,6 @@
 use core::panic;
 use regex::Regex;
-use syn::{DeriveInput, Data, Attribute, parenthesized, LitStr, LitInt, FieldsNamed, FieldsUnnamed, Meta, Type, Token, parse::Parse};
+use syn::{DeriveInput, Data, Attribute, parenthesized, LitStr, LitInt, FieldsNamed, FieldsUnnamed, Meta, Type, Token, parse::Parse, Lit, meta::ParseNestedMeta};
 use proc_macro::TokenStream;
 use quote::quote;
 use proc_macro2::{TokenStream as TokenStream2, Ident, Span};
@@ -152,13 +152,20 @@ fn parse_helper_attribute_values(attributes: &[Attribute]) -> Result<ParsedAttri
                 let n: u8 = lit.base10_parse()?;
                 parsed_attribute.exit_code = Some(n as u8);
                 return Ok(());
-            } else if meta.path.is_ident("msg") {
+            } else if meta.path.is_ident("msg") {               
                 let content;
                 parenthesized!(content in meta.input);
                 let lit: LitStr = content.parse()?;
-                //TODO: why is there no problem if the there is no rest?
-                let rest: TokenStream2 = content.parse()?;
-                parsed_attribute.message = Some(Message { format_string: lit.value(), format_string_arguments: Some(rest) });
+                let comma_present = content.peek(Token![,]);
+                let mut args = None;
+                if comma_present {
+                    content.parse::<Token![,]>()?; 
+                    let rest: TokenStream2 = content.parse()?;
+                    args = Some(rest);
+                } else if !content.is_empty() {
+                    panic!("Missing \",\"");
+                }
+                parsed_attribute.message = Some(Message { format_string: lit.value(), format_string_arguments: args });
                 return Ok(());
             }
             Err(meta.error(format!("unrecognized attribute {}", meta.path.get_ident().unwrap())))
