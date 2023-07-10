@@ -3,7 +3,7 @@ use std::process::{Termination, ExitCode};
 use thistermination::Termination;
 
 #[derive(Termination)]
-enum TestNoArgs {
+enum Test {
     #[termination(exit_code(2), msg("unit {}", "test"))]
     UnitA,
     #[termination(exit_code(3), msg("unnamed {}", 69))]
@@ -17,22 +17,22 @@ fn assert_eq_exit_code_and_int(ex: ExitCode, code: i32) {
 }
 
 #[test]
-fn unit_no_args() {
-    let unit_a = TestNoArgs::UnitA;
+fn unit_format_args() {
+    let unit_a = Test::UnitA;
     assert_eq!(format!("{:?}", unit_a), "unit test");
     assert_eq_exit_code_and_int(unit_a.report(), 2);
 }
 
 #[test]
-fn unnamed_no_args() {
-    let unnamed = TestNoArgs::UnnamedA(42);
+fn unnamed_format_args() {
+    let unnamed = Test::UnnamedA(42);
     assert_eq!(format!("{:?}", unnamed), "unnamed 69");
     assert_eq_exit_code_and_int(unnamed.report(), 3);
 }
 
 #[test]
-fn named_no_args() {
-    let named = TestNoArgs::NamedA{x: 1337};
+fn named_format_args() {
+    let named = Test::NamedA{x: 1337};
     assert_eq!(format!("{:?}", named), "named asdf 5");
     assert_eq_exit_code_and_int(named.report(), 4);
 }
