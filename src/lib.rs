@@ -1,6 +1,6 @@
 use core::panic;
 use regex::Regex;
-use syn::{DeriveInput, Data, Attribute, parenthesized, LitStr, LitInt, FieldsNamed, FieldsUnnamed, Meta, Type, Token, parse::Parse, Lit, meta::ParseNestedMeta};
+use syn::{DeriveInput, Data, Attribute, parenthesized, LitStr, LitInt, FieldsNamed, FieldsUnnamed, Token};
 use proc_macro::TokenStream;
 use quote::quote;
 use proc_macro2::{TokenStream as TokenStream2, Ident, Span};
