@@ -4,13 +4,13 @@ use thistermination::Termination;
 
 #[derive(Termination)]
 enum Test {
-    #[termination(exit_code(3), msg("unnamed {0} {}", 69))]
+    #[termination(exit_code(3), msg("unnamed {0:?} {}", 69))]
     UnnamedA(u8),
-    #[termination(exit_code(3), msg("unnamed {0} {} {1}", 69))]
+    #[termination(exit_code(3), msg("unnamed {0} {:?} {1}", 69))]
     UnnamedB(u8, i32),
     #[termination(exit_code(4), msg("named {} {x}", "asdf"))]
     NamedA{x: u32},
-    #[termination(exit_code(4), msg("named {} {y} {x}", "asdf"))]
+    #[termination(exit_code(4), msg("named {} {y:?} {x}", "asdf"))]
     NamedB{x: u32, y: u8},
 }
 
