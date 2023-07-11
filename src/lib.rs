@@ -14,7 +14,8 @@ struct Message {
     format_string: String,
     format_string_arguments: Option<TokenStream2>,
 }
-
+//TODO: one macro that does not implement debug named TerminationNoDebug and without msg attribute
+//TODO: maybe another one containing all traits needed i.e. Display and Error and #[from]
 #[proc_macro_derive(Termination, attributes(termination))]
 pub fn derive_termination(steam: TokenStream) -> TokenStream {
     let ast: DeriveInput = syn::parse(steam).unwrap();
@@ -32,7 +33,6 @@ pub fn derive_termination(steam: TokenStream) -> TokenStream {
             syn::Fields::Unit => termination_impl_unit(name, variant_name, &variant_attributes),
         }
     });
-    //TODO: maybe another macro that replicates derive Debug
     let debug_impl = variants.iter().map(|variant| {
         let variant_name: &syn::Ident = &variant.ident;
         let variant_attributes = parse_helper_attribute_values(&variant.attrs).unwrap();
@@ -75,7 +75,7 @@ fn termination_impl_named(name: &Ident, variant_name: &Ident, fields: &FieldsNam
 
 fn termination_impl_unnamed(name: &Ident, variant_name: &Ident, fields: &FieldsUnnamed, attribute: &ParsedAttribute) -> TokenStream2 {
     let field_names = fields.unnamed.iter().enumerate().map(|(i, _)| {
-        syn::Ident::new(&format!("field_{}", i), Span::call_site())
+        syn::Ident::new(&format!("__{}", i), Span::call_site())
     });
     if let Some(exit_code) = attribute.exit_code {
         quote! { #name::#variant_name( #(#field_names),* ) => #exit_code.into(), }
@@ -111,10 +111,10 @@ fn get_formatted_string_with_fields(msg: &str, prefix: &str) -> String {
 
 fn debug_impl_unnamed(name: &Ident, variant_name: &Ident, fields: &FieldsUnnamed, attribute: &ParsedAttribute) -> TokenStream2 {
     let field_names = fields.unnamed.iter().enumerate().map(|(i, _)| {
-        syn::Ident::new(&format!("field_{}", i), Span::call_site())
+        syn::Ident::new(&format!("__{}", i), Span::call_site())
     });
     if let Some(Message { format_string, format_string_arguments }) = &attribute.message {
-        let format_string = get_formatted_string_with_fields(format_string, "field_");
+        let format_string = get_formatted_string_with_fields(format_string, "__");
         quote! { #name::#variant_name(#(#field_names),*) => write!(f, #format_string, #format_string_arguments), }
     } else {
         quote! { #name::#variant_name(#(#field_names),*) => write!(f, "{}", self), }
