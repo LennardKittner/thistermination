@@ -1,178 +1,26 @@
-use core::panic;
-use regex::Regex;
-use syn::{DeriveInput, Data, Attribute, parenthesized, LitStr, LitInt, FieldsNamed, FieldsUnnamed, Token};
 use proc_macro::TokenStream;
-use quote::quote;
-use proc_macro2::{TokenStream as TokenStream2, Ident, Span};
+use termination::_derive_termination;
+use termination_no_debug::_derive_termination_no_debug;
 
-struct ParsedAttribute {
-    exit_code: Option<u8>,
-    message: Option<Message>,
+mod termination;
+mod termination_no_debug;
+mod code_generation;
+mod parse;
+
+#[derive(PartialEq)]
+enum DeriveMacroMode {
+    Termination,
+    TerminationNoDebug,
+    TerminationFull,
 }
 
-struct Message {
-    format_string: String,
-    format_string_arguments: Option<TokenStream2>,
-}
-//TODO: one macro that does not implement debug named TerminationNoDebug and without msg attribute
 //TODO: maybe another one containing all traits needed i.e. Display and Error and #[from]
 #[proc_macro_derive(Termination, attributes(termination))]
 pub fn derive_termination(steam: TokenStream) -> TokenStream {
-    let ast: DeriveInput = syn::parse(steam).unwrap();
-    let name = &ast.ident;
-    let variants = match ast.data {
-        Data::Enum(ref data) => &data.variants,
-        _ => panic!("thistermination can currently only be derived on enums"),
-    };
-    let termination_impl = variants.iter().map(|variant| {
-        let variant_name = &variant.ident;
-        let variant_attributes = parse_helper_attribute_values(&variant.attrs).unwrap();
-        match &variant.fields {
-            syn::Fields::Named(f) => termination_impl_named(name, variant_name, f, &variant_attributes),
-            syn::Fields::Unnamed(f) => termination_impl_unnamed(name, variant_name, f, &variant_attributes),
-            syn::Fields::Unit => termination_impl_unit(name, variant_name, &variant_attributes),
-        }
-    });
-    let debug_impl = variants.iter().map(|variant| {
-        let variant_name: &syn::Ident = &variant.ident;
-        let variant_attributes = parse_helper_attribute_values(&variant.attrs).unwrap();
-        match &variant.fields {
-            syn::Fields::Named(f) => debug_impl_named(name, variant_name, f, &variant_attributes),
-            syn::Fields::Unnamed(f) => debug_impl_unnamed(name, variant_name, f, &variant_attributes),
-            syn::Fields::Unit => debug_impl_unit(name, variant_name, &variant_attributes),
-        }
-    });
-
-    let generate = quote! {
-        impl std::process::Termination for #name {
-            fn report(self) -> std::process::ExitCode {
-                match self {
-                    #(#termination_impl)*
-                }
-            }
-        }
-  
-        impl std::fmt::Debug for #name {
-            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-                match self {
-                    #(#debug_impl)*
-                }
-            }
-        }
-    };
-
-    generate.into()
+   _derive_termination(steam)
 }
 
-fn termination_impl_named(name: &Ident, variant_name: &Ident, fields: &FieldsNamed, attribute: &ParsedAttribute) -> TokenStream2 {
-    let field_names = fields.named.iter().map(|field| &field.ident);
-    if let Some(exit_code) = attribute.exit_code {
-        quote! { #name::#variant_name { #(ref #field_names),* } => #exit_code.into(), }
-    } else { 
-        quote! { #name::#variant_name { #(ref #field_names),* } => std::process::ExitCode::FAILURE, }
-    }
-}
-
-fn termination_impl_unnamed(name: &Ident, variant_name: &Ident, fields: &FieldsUnnamed, attribute: &ParsedAttribute) -> TokenStream2 {
-    let field_names = fields.unnamed.iter().enumerate().map(|(i, _)| {
-        syn::Ident::new(&format!("__{}", i), Span::call_site())
-    });
-    if let Some(exit_code) = attribute.exit_code {
-        quote! { #name::#variant_name( #(#field_names),* ) => #exit_code.into(), }
-    } else { 
-        quote! { #name::#variant_name( #(#field_names),* ) => std::process::ExitCode::FAILURE, }
-    }
-}
-
-fn termination_impl_unit(name: &Ident, variant_name: &Ident, attribute: &ParsedAttribute) -> TokenStream2 {
-    if let Some(exit_code) = attribute.exit_code {
-        quote! { #name::#variant_name => #exit_code.into(), }
-    } else { 
-        quote! { #name::#variant_name => std::process::ExitCode::FAILURE, }
-    }
-}
-
-fn debug_impl_named(name: &Ident, variant_name: &Ident, fields: &FieldsNamed, attribute: &ParsedAttribute) -> TokenStream2 {
-    let field_names = fields.named.iter().map(|field| &field.ident);
-    if let Some(Message { format_string, format_string_arguments }) = &attribute.message {
-        quote! { #name::#variant_name { #(ref #field_names),* } => write!(f, #format_string, #format_string_arguments), }
-    } else { 
-        quote! { #name::#variant_name { #(ref #field_names),* } => write!(f, "{}", self), }
-    }
-}
-
-fn get_formatted_string_with_fields(msg: &str, prefix: &str) -> String {
-    let regex = Regex::new(r#"(?:\{(?:(\d+)(?::[^\}]+)?)\})"#).unwrap();
-    regex.replace_all(msg, |caps: &regex::Captures| {
-        let field = caps.get(1).unwrap().as_str();
-        format!("{{{}{}}}",prefix, field)
-    }).to_string()
- }
-
-fn debug_impl_unnamed(name: &Ident, variant_name: &Ident, fields: &FieldsUnnamed, attribute: &ParsedAttribute) -> TokenStream2 {
-    let field_names = fields.unnamed.iter().enumerate().map(|(i, _)| {
-        syn::Ident::new(&format!("__{}", i), Span::call_site())
-    });
-    if let Some(Message { format_string, format_string_arguments }) = &attribute.message {
-        let format_string = get_formatted_string_with_fields(format_string, "__");
-        quote! { #name::#variant_name(#(#field_names),*) => write!(f, #format_string, #format_string_arguments), }
-    } else {
-        quote! { #name::#variant_name(#(#field_names),*) => write!(f, "{}", self), }
-    }
-}
-
-fn debug_impl_unit(name: &Ident, variant_name: &Ident, attribute: &ParsedAttribute) -> TokenStream2 {
-    if let Some(Message { format_string, format_string_arguments }) = &attribute.message {
-        quote! { #name::#variant_name => write!(f, #format_string, #format_string_arguments), }
-    } else {
-        quote! { #name::#variant_name => write!(f, "{}", self), }
-    }
-}
-
-//TODO: better error handling e.g. show error at specific attribute
-fn parse_helper_attribute_values(attributes: &[Attribute]) -> Result<ParsedAttribute, String> {
-    let mut parsed_attribute = ParsedAttribute {
-        exit_code: None,
-        message: None,
-    };
-    let mut found_attribute = false;
-    for attribute in attributes {
-        if !attribute.path().is_ident("termination") {
-            continue;
-        }
-        if found_attribute {
-            panic!("only one #[termination(...)] attribute is allowed")
-        }
-        found_attribute = true;
-        let a  = attribute.parse_nested_meta(|meta| {
-            if meta.path.is_ident("exit_code") {
-                let content;
-                parenthesized!(content in meta.input);
-                let lit: LitInt = content.parse()?;
-                let n: u8 = lit.base10_parse()?;
-                parsed_attribute.exit_code = Some(n as u8);
-                return Ok(());
-            } else if meta.path.is_ident("msg") {               
-                let content;
-                parenthesized!(content in meta.input);
-                let lit: LitStr = content.parse()?;
-                let comma_present = content.peek(Token![,]);
-                let mut args = None;
-                if comma_present {
-                    content.parse::<Token![,]>()?; 
-                    let rest: TokenStream2 = content.parse()?;
-                    args = Some(rest);
-                } else if !content.is_empty() {
-                    panic!("Missing \",\"");
-                }
-                parsed_attribute.message = Some(Message { format_string: lit.value(), format_string_arguments: args });
-                return Ok(());
-            }
-            Err(meta.error(format!("unrecognized attribute {}", meta.path.get_ident().unwrap())))
-        });
-        if let Err(error) = a {
-            panic!("parse error {:?}", error);
-        }
-    }
-    Ok(parsed_attribute)
+#[proc_macro_derive(TerminationNoDebug, attributes(termination))]
+pub fn derive_termination_no_debug(steam: TokenStream) -> TokenStream {
+    _derive_termination_no_debug(steam)
 }
