@@ -3,12 +3,13 @@ use syn::{FieldsNamed, FieldsUnnamed, punctuated::Punctuated, Variant, token::Co
 use quote::quote;
 use proc_macro2::{TokenStream as TokenStream2, Ident, Span};
 
-use crate::parse::{parse_helper_attribute_values, Message, ParsedAttribute};
+use crate::parse::{parse_helper_attribute, Message, ParsedAttribute, HelperAttribute};
 
-pub fn generate_debug_trait(name: &Ident, variants: &Punctuated<Variant, Comma>) -> TokenStream2 {
+//TODO: make the interface better
+pub fn generate_debug_trait(name: &Ident, variants: &Punctuated<Variant, Comma>, allowed_attributes: &[HelperAttribute], forbidden_attributes: &[HelperAttribute]) -> TokenStream2 {
     let debug_impl = variants.iter().map(|variant| {
         let variant_name: &syn::Ident = &variant.ident;
-        let variant_attributes = parse_helper_attribute_values(&variant.attrs).unwrap();
+        let variant_attributes = parse_helper_attribute(&variant.attrs, allowed_attributes, forbidden_attributes).unwrap();
         match &variant.fields {
             syn::Fields::Named(f) => debug_impl_named(name, variant_name, f, &variant_attributes),
             syn::Fields::Unnamed(f) => debug_impl_unnamed(name, variant_name, f, &variant_attributes),
@@ -26,10 +27,10 @@ pub fn generate_debug_trait(name: &Ident, variants: &Punctuated<Variant, Comma>)
     }
 }
 
-pub fn generate_termination_trait(name: &Ident, variants: &Punctuated<Variant, Comma>) -> TokenStream2 {
+pub fn generate_termination_trait(name: &Ident, variants: &Punctuated<Variant, Comma>, allowed_attributes: &[HelperAttribute], forbidden_attributes: &[HelperAttribute]) -> TokenStream2 {
     let termination_impl = variants.iter().map(|variant| {
     let variant_name = &variant.ident;
-    let variant_attributes = parse_helper_attribute_values(&variant.attrs).unwrap();
+    let variant_attributes = parse_helper_attribute(&variant.attrs, allowed_attributes, forbidden_attributes).unwrap();
     match &variant.fields {
             syn::Fields::Named(f) => termination_impl_named(name, variant_name, f, &variant_attributes),
             syn::Fields::Unnamed(f) => termination_impl_unnamed(name, variant_name, f, &variant_attributes),

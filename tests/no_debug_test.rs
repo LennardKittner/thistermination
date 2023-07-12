@@ -6,7 +6,7 @@ use thistermination::{TerminationNoDebug};
 #[derive(TerminationNoDebug)]
 enum Test {
     UnitA,
-    #[termination(exit_code(7), msg("asdf"))]
+    #[termination(exit_code(7))]
     UnitB,
     UnnamedA(u8),
     #[termination(exit_code(5))]
