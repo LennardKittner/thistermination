@@ -1,4 +1,4 @@
-use std::env::var;
+use std::{env::var, thread::panicking};
 
 use regex::Regex;
 use syn::{FieldsNamed, FieldsUnnamed, punctuated::Punctuated, Variant, token::Comma};
@@ -13,9 +13,9 @@ pub fn generate_debug_trait(name: &Ident, variants: &Punctuated<Variant, Comma>,
         let variant_name: &syn::Ident = &variant.ident;
         let variant_attributes = parse_helper_attribute(&variant.attrs, allowed_attributes, forbidden_attributes).unwrap();
         match &variant.fields {
-            syn::Fields::Named(f) => debug_impl_named(name, variant_name, f, &variant_attributes),
-            syn::Fields::Unnamed(f) => debug_impl_unnamed(name, variant_name, f, &variant_attributes),
-            syn::Fields::Unit => debug_impl_unit(name, variant_name, &variant_attributes),
+            syn::Fields::Named(f) => message_impl_named(name, variant_name, f, &variant_attributes),
+            syn::Fields::Unnamed(f) => message_impl_unnamed(name, variant_name, f, &variant_attributes),
+            syn::Fields::Unit => message_impl_unit(name, variant_name, &variant_attributes),
         }
     });
     quote! {
@@ -50,12 +50,25 @@ pub fn generate_termination_trait(name: &Ident, variants: &Punctuated<Variant, C
     }
 }
 
-//TODO: use msg arg
 pub fn generate_display_trait(name: &Ident, variants: &Punctuated<Variant, Comma>, allowed_attributes: &[HelperAttribute], forbidden_attributes: &[HelperAttribute]) -> TokenStream2 {
+    let display_impl = variants.iter().map(|variant| {
+        let variant_name: &syn::Ident = &variant.ident;
+        let variant_attributes = parse_helper_attribute(&variant.attrs, allowed_attributes, forbidden_attributes).unwrap();
+        if variant_attributes.message.is_none() {
+            panic!("missing #[termination(msg(\"...\"))] attribute")
+        }
+        match &variant.fields {
+            syn::Fields::Named(f) => message_impl_named(name, variant_name, f, &variant_attributes),
+            syn::Fields::Unnamed(f) => message_impl_unnamed(name, variant_name, f, &variant_attributes),
+            syn::Fields::Unit => message_impl_unit(name, variant_name, &variant_attributes),
+        }
+    });
     quote! {
         impl std::fmt::Display for #name {
             fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-                write!(f, "test")
+                match self {
+                    #(#display_impl)*
+                }
             }
         }
     }
@@ -124,7 +137,7 @@ fn termination_impl_unit(name: &Ident, variant_name: &Ident, attribute: &ParsedA
     }
 }
 
-fn debug_impl_named(name: &Ident, variant_name: &Ident, fields: &FieldsNamed, attribute: &ParsedAttribute) -> TokenStream2 {
+fn message_impl_named(name: &Ident, variant_name: &Ident, fields: &FieldsNamed, attribute: &ParsedAttribute) -> TokenStream2 {
     let field_names = fields.named.iter().map(|field| &field.ident);
     if let Some(Message { format_string, format_string_arguments }) = &attribute.message {
         quote! { #name::#variant_name { #(ref #field_names),* } => write!(f, #format_string, #format_string_arguments), }
@@ -141,7 +154,7 @@ fn get_formatted_string_with_fields(msg: &str, prefix: &str) -> String {
     }).to_string()
  }
 
-fn debug_impl_unnamed(name: &Ident, variant_name: &Ident, fields: &FieldsUnnamed, attribute: &ParsedAttribute) -> TokenStream2 {
+fn message_impl_unnamed(name: &Ident, variant_name: &Ident, fields: &FieldsUnnamed, attribute: &ParsedAttribute) -> TokenStream2 {
     let field_names = fields.unnamed.iter().enumerate().map(|(i, _)| {
         syn::Ident::new(&format!("__{}", i), Span::call_site())
     });
@@ -153,7 +166,7 @@ fn debug_impl_unnamed(name: &Ident, variant_name: &Ident, fields: &FieldsUnnamed
     }
 }
 
-fn debug_impl_unit(name: &Ident, variant_name: &Ident, attribute: &ParsedAttribute) -> TokenStream2 {
+fn message_impl_unit(name: &Ident, variant_name: &Ident, attribute: &ParsedAttribute) -> TokenStream2 {
     if let Some(Message { format_string, format_string_arguments }) = &attribute.message {
         quote! { #name::#variant_name => write!(f, #format_string, #format_string_arguments), }
     } else {
