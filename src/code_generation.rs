@@ -1,5 +1,7 @@
+use std::env::var;
+
 use regex::Regex;
-use syn::{FieldsNamed, FieldsUnnamed, punctuated::Punctuated, Variant, token::Comma, Type};
+use syn::{FieldsNamed, FieldsUnnamed, punctuated::Punctuated, Variant, token::Comma};
 use quote::quote;
 use proc_macro2::{TokenStream as TokenStream2, Ident, Span};
 
@@ -65,21 +67,28 @@ pub fn generate_error_trait(name: &Ident) -> TokenStream2 {
     }
 }
 
-//TODO: other fields
 pub fn generate_from_traits(name: &Ident, variants: &Punctuated<Variant, Comma>) -> TokenStream2 {
      let from_impl = variants.iter().map(|variant| {
         let variant_name: &syn::Ident = &variant.ident;
-        let field_type = match &variant.fields {
-            syn::Fields::Named(_) => todo!(),
-            syn::Fields::Unnamed(fields) => parse_from_attribute(&fields),
-            syn::Fields::Unit => todo!(),
-        };
-        quote! {
-            impl std::convert::From<#field_type> for #name {
-                fn from(value: #field_type) -> Self {
-                    #name::#variant_name(value)
+        let field_type = parse_from_attribute(&variant.fields).unwrap();
+        if let Some(f_type) = field_type {
+            let fn_impl = match &variant.fields {
+                syn::Fields::Named(fields) => {
+                    let field_name = fields.named.first().unwrap().ident.as_ref().unwrap();
+                    quote! { #name::#variant_name { #field_name: value } }
+                }
+                syn::Fields::Unnamed(_) => quote! { #name::#variant_name(value) },
+                syn::Fields::Unit => panic!("should never happen"),
+            };
+            quote! {
+                impl std::convert::From<#f_type> for #name {
+                    fn from(value: #f_type) -> Self {
+                        #fn_impl
+                    }
                 }
             }
+        } else {
+            quote!{}
         }
     });
     quote! {

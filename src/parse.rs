@@ -1,5 +1,5 @@
 use core::panic;
-use syn::{Attribute, parenthesized, LitStr, LitInt, Token, Error, meta::ParseNestedMeta, FieldsUnnamed, Type};
+use syn::{Attribute, parenthesized, LitStr, LitInt, Token, Error, meta::ParseNestedMeta, FieldsUnnamed, Type, Fields};
 use proc_macro2::{TokenStream as TokenStream2, Ident};
 
 
@@ -39,15 +39,26 @@ pub struct Message {
     pub format_string_arguments: Option<TokenStream2>,
 }
 
-pub fn parse_from_attribute(unnamed_fields: &FieldsUnnamed) -> Option<Type> {
-    for field in &unnamed_fields.unnamed {
+pub fn parse_from_attribute(fields: &Fields) -> Result<Option<Type>, String> {
+    let mut field_type = None;
+    if fields.len() > 1 {
+        return Err("Only one field is allowed when using #[from].".to_string())
+    }
+    if fields.is_empty() {
+        return Ok(None);
+    }
+    for field in fields.iter() {
         for attribute in &field.attrs {
             if attribute.path().is_ident("from") {
-                return Some(field.ty.clone());
+                if field_type.is_none() {
+                    field_type = Some(field.ty.clone());
+                } else {
+                    return Err("Only one #[from] per enum variant is allowed.".to_string())
+                }
             }
         }
     }
-    None
+    Ok(field_type)
 }
 
 //TODO: better error handling e.g. show error at specific attribute
