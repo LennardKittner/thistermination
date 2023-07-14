@@ -1,9 +1,9 @@
 use regex::Regex;
-use syn::{FieldsNamed, FieldsUnnamed, punctuated::Punctuated, Variant, token::Comma};
+use syn::{FieldsNamed, FieldsUnnamed, punctuated::Punctuated, Variant, token::Comma, Type};
 use quote::quote;
 use proc_macro2::{TokenStream as TokenStream2, Ident, Span};
 
-use crate::parse::{parse_helper_attribute, Message, ParsedAttribute, HelperAttribute};
+use crate::parse::{parse_helper_attribute, Message, ParsedAttribute, HelperAttribute, parse_from_attribute};
 
 //TODO: make the interface better
 pub fn generate_debug_trait(name: &Ident, variants: &Punctuated<Variant, Comma>, allowed_attributes: &[HelperAttribute], forbidden_attributes: &[HelperAttribute]) -> TokenStream2 {
@@ -45,6 +45,45 @@ pub fn generate_termination_trait(name: &Ident, variants: &Punctuated<Variant, C
                 }
             }
         }
+    }
+}
+
+//TODO: use msg arg
+pub fn generate_display_trait(name: &Ident, variants: &Punctuated<Variant, Comma>, allowed_attributes: &[HelperAttribute], forbidden_attributes: &[HelperAttribute]) -> TokenStream2 {
+    quote! {
+        impl std::fmt::Display for #name {
+            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                write!(f, "test")
+            }
+        }
+    }
+}
+
+pub fn generate_error_trait(name: &Ident) -> TokenStream2 {
+    quote! {
+        impl std::error::Error for #name { }
+    }
+}
+
+//TODO: other fields
+pub fn generate_from_traits(name: &Ident, variants: &Punctuated<Variant, Comma>) -> TokenStream2 {
+     let from_impl = variants.iter().map(|variant| {
+        let variant_name: &syn::Ident = &variant.ident;
+        let field_type = match &variant.fields {
+            syn::Fields::Named(_) => todo!(),
+            syn::Fields::Unnamed(fields) => parse_from_attribute(&fields),
+            syn::Fields::Unit => todo!(),
+        };
+        quote! {
+            impl std::convert::From<#field_type> for #name {
+                fn from(value: #field_type) -> Self {
+                    #name::#variant_name(value)
+                }
+            }
+        }
+    });
+    quote! {
+        #(#from_impl)*
     }
 }
 

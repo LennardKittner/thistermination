@@ -1,5 +1,5 @@
 use core::panic;
-use syn::{Attribute, parenthesized, LitStr, LitInt, Token, Error, meta::ParseNestedMeta};
+use syn::{Attribute, parenthesized, LitStr, LitInt, Token, Error, meta::ParseNestedMeta, FieldsUnnamed, Type};
 use proc_macro2::{TokenStream as TokenStream2, Ident};
 
 
@@ -37,6 +37,17 @@ pub struct ParsedAttribute {
 pub struct Message {
     pub format_string: String,
     pub format_string_arguments: Option<TokenStream2>,
+}
+
+pub fn parse_from_attribute(unnamed_fields: &FieldsUnnamed) -> Option<Type> {
+    for field in &unnamed_fields.unnamed {
+        for attribute in &field.attrs {
+            if attribute.path().is_ident("from") {
+                return Some(field.ty.clone());
+            }
+        }
+    }
+    None
 }
 
 //TODO: better error handling e.g. show error at specific attribute
