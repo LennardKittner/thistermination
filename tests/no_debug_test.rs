@@ -1,7 +1,7 @@
 use std::process::{Termination, ExitCode};
 use std::fmt::Debug;
 
-use thistermination::{TerminationNoDebug};
+use thistermination::TerminationNoDebug;
 
 #[derive(TerminationNoDebug)]
 enum Test {

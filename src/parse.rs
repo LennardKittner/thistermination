@@ -1,5 +1,5 @@
 use core::panic;
-use syn::{Attribute, parenthesized, LitStr, LitInt, Token, Error, meta::ParseNestedMeta, FieldsUnnamed, Type, Fields};
+use syn::{Attribute, parenthesized, LitStr, LitInt, Token, Error, meta::ParseNestedMeta, Type, Fields};
 use proc_macro2::{TokenStream as TokenStream2, Ident};
 
 
@@ -41,9 +41,6 @@ pub struct Message {
 
 pub fn parse_from_attribute(fields: &Fields) -> Result<Option<Type>, String> {
     let mut field_type = None;
-    if fields.len() > 1 {
-        return Err("Only one field is allowed when using #[from].".to_string())
-    }
     if fields.is_empty() {
         return Ok(None);
     }
@@ -57,6 +54,9 @@ pub fn parse_from_attribute(fields: &Fields) -> Result<Option<Type>, String> {
                 }
             }
         }
+    }
+    if field_type.is_some() && fields.len() > 1 {
+        return Err("Only one field is allowed when using #[from].".to_string())
     }
     Ok(field_type)
 }

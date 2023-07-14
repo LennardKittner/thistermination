@@ -1,5 +1,3 @@
-use std::{env::var, thread::panicking};
-
 use regex::Regex;
 use syn::{FieldsNamed, FieldsUnnamed, punctuated::Punctuated, Variant, token::Comma};
 use quote::quote;
