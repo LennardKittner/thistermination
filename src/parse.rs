@@ -2,6 +2,7 @@ use quote::spanned::Spanned;
 use syn::{Attribute, parenthesized, LitStr, LitInt, Token, Error, meta::ParseNestedMeta, Type, Variant};
 use proc_macro2::{TokenStream as TokenStream2, Span};
 
+//TODO: maybe use reference to variant
 pub struct ParsedAttribute {
     pub variant: Variant,
     pub exit_code: Option<ExitCodeAttribute>,
@@ -77,7 +78,7 @@ fn parse_attributes(variant: &Variant, attributes: &[Attribute]) -> Result<Parse
     };
     for attribute in attributes {
         if let Some(ident) = attribute.path().get_ident() {
-            if ident.to_string() != "termination" {
+            if *ident != "termination" {
                 continue;
             }
             if found_attribute {
@@ -89,14 +90,14 @@ fn parse_attributes(variant: &Variant, attributes: &[Attribute]) -> Result<Parse
         }
         attribute.parse_nested_meta(|meta| {
             if let Some(ident) = meta.path.get_ident() {
-                if ident.to_string() == "msg" {
+                if *ident == "msg" {
                     if parsed_attribute.message.is_none() {
                         parsed_attribute.message = Some(parse_message(&meta)?);
                         return Ok(());
                     } else {
                         return Err(Error::new(ident.span(), "Only one `msg` per enum variant is allowed."));
                     }
-                } else if ident.to_string() == "exit_code" {
+                } else if *ident == "exit_code" {
                     if parsed_attribute.exit_code.is_none() {
                         parsed_attribute.exit_code = Some(parse_exit_code(&meta)?);
                         return Ok(());
@@ -105,7 +106,7 @@ fn parse_attributes(variant: &Variant, attributes: &[Attribute]) -> Result<Parse
                     }
                 }
             } else {
-                return Err(meta.error(format!("identifier expected")));
+                return Err(meta.error("identifier expected"));
             }
             Err(meta.error(format!("unrecognized attribute {}", meta.path.get_ident().unwrap())))
         })?;
@@ -118,7 +119,7 @@ fn parse_exit_code(meta: &ParseNestedMeta<'_>) -> Result<ExitCodeAttribute, Erro
     parenthesized!(content in meta.input);
     let lit: LitInt = content.parse()?;
     let exit_code: u8 = lit.base10_parse()?;
-    return Ok(ExitCodeAttribute { span: lit.span(), exit_code });
+    Ok(ExitCodeAttribute { span: lit.span(), exit_code })
 }
 
 fn parse_message(meta: &ParseNestedMeta<'_>) -> Result<MessageAttribute, Error> {
@@ -137,5 +138,5 @@ fn parse_message(meta: &ParseNestedMeta<'_>) -> Result<MessageAttribute, Error> 
         let rest: TokenStream2 = content.parse()?;
         return Err(Error::new(rest.__span(), "expected \",\""));
     }
-    return Ok(MessageAttribute { format_string_span: lit.span(), format_string: lit.value(), format_string_arguments_span: args_span, format_string_arguments: args });
+    Ok(MessageAttribute { format_string_span: lit.span(), format_string: lit.value(), format_string_arguments_span: args_span, format_string_arguments: args })
 }

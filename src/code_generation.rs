@@ -5,7 +5,7 @@ use proc_macro2::{TokenStream as TokenStream2, Ident, Span};
 
 use crate::parse::{MessageAttribute, ExitCodeAttribute, FromAttribute, ParsedAttribute};
 
-pub fn generate_debug_trait(name: &Ident, attributes: &Vec<ParsedAttribute>) -> TokenStream2 {
+pub fn generate_debug_trait(name: &Ident, attributes: &[ParsedAttribute]) -> TokenStream2 {
     let debug_impl = attributes.iter().map(|attribute| {
         let variant_name = &attribute.variant.ident;
         match &attribute.variant.fields {
@@ -25,7 +25,7 @@ pub fn generate_debug_trait(name: &Ident, attributes: &Vec<ParsedAttribute>) -> 
     }
 }
 
-pub fn generate_termination_trait(name: &Ident, attributes: &Vec<ParsedAttribute>) -> TokenStream2 {
+pub fn generate_termination_trait(name: &Ident, attributes: &[ParsedAttribute]) -> TokenStream2 {
     let termination_impl = attributes.iter().map(|attribute| {
     let variant_name = &attribute.variant.ident;
     match &attribute.variant.fields {
@@ -45,7 +45,7 @@ pub fn generate_termination_trait(name: &Ident, attributes: &Vec<ParsedAttribute
     }
 }
 
-pub fn generate_display_trait(name: &Ident, attributes: &Vec<ParsedAttribute>) -> TokenStream2 {
+pub fn generate_display_trait(name: &Ident, attributes: &[ParsedAttribute]) -> TokenStream2 {
     let display_impl = attributes.iter().map(|attribute| {
         let variant_name = &attribute.variant.ident;
         match &attribute.variant.fields {
@@ -71,7 +71,7 @@ pub fn generate_error_trait(name: &Ident) -> TokenStream2 {
     }
 }
 
-pub fn generate_from_traits(name: &Ident, attributes: &Vec<FromAttribute>) -> TokenStream2 {
+pub fn generate_from_traits(name: &Ident, attributes: &[FromAttribute]) -> TokenStream2 {
      let from_impl = attributes.iter().map(|attribute| {
         let variant_name = &attribute.variant.ident;
         if let Some(f_type) = &attribute.from_type {
