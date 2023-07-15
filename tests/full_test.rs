@@ -1,8 +1,6 @@
 use std::{process::{Termination, ExitCode}, num::ParseIntError, str::ParseBoolError};
 use thistermination::TerminationFull;
 
-//TODO: unit
-//TODO: check display
 #[derive(TerminationFull)]
 enum Test {
     #[termination(msg("unit a"))]
