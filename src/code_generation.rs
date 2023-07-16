@@ -1,9 +1,9 @@
 use regex::Regex;
-use syn::{FieldsNamed, FieldsUnnamed};
+use syn::{FieldsNamed, FieldsUnnamed, Error};
 use quote::quote;
 use proc_macro2::{TokenStream as TokenStream2, Ident, Span};
 
-use crate::parse::{MessageAttribute, ExitCodeAttribute, FromAttribute, ParsedAttribute};
+use crate::{parse::{MessageAttribute, ExitCodeAttribute, FromAttribute, ParsedAttribute}, pull_up_results};
 
 pub fn generate_debug_trait(name: &Ident, attributes: &[ParsedAttribute]) -> TokenStream2 {
     let debug_impl = attributes.iter().map(|attribute| {
@@ -45,16 +45,19 @@ pub fn generate_termination_trait(name: &Ident, attributes: &[ParsedAttribute]) 
     }
 }
 
-pub fn generate_display_trait(name: &Ident, attributes: &[ParsedAttribute]) -> TokenStream2 {
-    let display_impl = attributes.iter().map(|attribute| {
+pub fn generate_display_trait(name: &Ident, attributes: &[ParsedAttribute]) -> Result<TokenStream2, Error> {
+    let display_impl = pull_up_results(attributes.iter().map(|attribute| {
         let variant_name = &attribute.variant.ident;
-        match &attribute.variant.fields {
+        if attribute.message.is_none() {
+            return Err(Error::new_spanned(&attribute.variant, "missing #[termination(msg(...))] attribute"));
+        }
+        Ok(match &attribute.variant.fields {
             syn::Fields::Named(f) => message_impl_named(name, variant_name, f, &attribute.message),
             syn::Fields::Unnamed(f) => message_impl_unnamed(name, variant_name, f, &attribute.message),
             syn::Fields::Unit => message_impl_unit(name, variant_name, &attribute.message),
-        }
-    });
-    quote! {
+        })
+    }))?;
+    Ok(quote! {
         impl std::fmt::Display for #name {
             fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
                 match self {
@@ -62,7 +65,7 @@ pub fn generate_display_trait(name: &Ident, attributes: &[ParsedAttribute]) -> T
                 }
             }
         }
-    }
+    })
 }
 
 pub fn generate_error_trait(name: &Ident) -> TokenStream2 {
@@ -130,7 +133,7 @@ fn termination_impl_unit(name: &Ident, variant_name: &Ident, exit_code: &Option<
 fn message_impl_named(name: &Ident, variant_name: &Ident, fields: &FieldsNamed, message: &Option<MessageAttribute>) -> TokenStream2 {
     let field_names = fields.named.iter().map(|field| &field.ident);
     if let Some(MessageAttribute { format_string, format_string_arguments, .. }) = message {
-        quote! { #name::#variant_name { #(ref #field_names),* } => write!(f, #format_string, #format_string_arguments), }
+        quote! { #name::#variant_name { #(ref #field_names),* } => write!(f, #format_string, #(#format_string_arguments),*), }
     } else {
         quote! { #name::#variant_name { #(ref #field_names),* } => write!(f, "{}", self), }
     }
@@ -142,7 +145,7 @@ fn get_formatted_string_with_fields(msg: &str, prefix: &str) -> String {
         let field = caps.get(1).unwrap().as_str();
         format!("{{{}{}}}",prefix, field)
     }).to_string()
- }
+}
 
 fn message_impl_unnamed(name: &Ident, variant_name: &Ident, fields: &FieldsUnnamed, message: &Option<MessageAttribute>) -> TokenStream2 {
     let field_names = fields.unnamed.iter().enumerate().map(|(i, _)| {
@@ -150,7 +153,7 @@ fn message_impl_unnamed(name: &Ident, variant_name: &Ident, fields: &FieldsUnnam
     });
     if let Some(MessageAttribute { format_string, format_string_arguments, .. }) = message {
         let format_string = get_formatted_string_with_fields(format_string, "__");
-        quote! { #name::#variant_name(#(#field_names),*) => write!(f, #format_string, #format_string_arguments), }
+        quote! { #name::#variant_name(#(#field_names),*) => write!(f, #format_string, #(#format_string_arguments),*), }
     } else {
         quote! { #name::#variant_name(#(#field_names),*) => write!(f, "{}", self), }
     }
@@ -158,7 +161,7 @@ fn message_impl_unnamed(name: &Ident, variant_name: &Ident, fields: &FieldsUnnam
 
 fn message_impl_unit(name: &Ident, variant_name: &Ident, message: &Option<MessageAttribute>) -> TokenStream2 {
     if let Some(MessageAttribute { format_string, format_string_arguments, .. }) = message {
-        quote! { #name::#variant_name => write!(f, #format_string, #format_string_arguments), }
+        quote! { #name::#variant_name => write!(f, #format_string, #(#format_string_arguments),*), }
     } else {
         quote! { #name::#variant_name => write!(f, "{}", self), }
     }

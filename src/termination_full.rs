@@ -5,7 +5,6 @@ use quote::quote;
 
 use crate::{code_generation::{generate_termination_trait, generate_debug_trait, generate_display_trait, generate_error_trait, generate_from_traits}, parse::{parse_from_attribute, parse_helper_attributes}};
 
-//TODO: enforce msg on all variants
 pub fn _derive_termination_full(steam: TokenStream) -> Result<TokenStream, Error> {
   let ast: DeriveInput = syn::parse(steam).unwrap();
     let name = &ast.ident;
@@ -15,7 +14,7 @@ pub fn _derive_termination_full(steam: TokenStream) -> Result<TokenStream, Error
     };
     let parse_helper_attributes = parse_helper_attributes(variants.iter())?;
     let debug_trait = generate_debug_trait(name, &parse_helper_attributes);
-    let display_trait = generate_display_trait(name, &parse_helper_attributes);
+    let display_trait = generate_display_trait(name, &parse_helper_attributes)?;
     let termination_trait = generate_termination_trait(name, &parse_helper_attributes);
     let error_trait = generate_error_trait(name);
     let from_attributes = parse_from_attribute(variants.iter())?;

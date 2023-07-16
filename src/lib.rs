@@ -9,7 +9,6 @@ mod termination_full;
 mod code_generation;
 mod parse;
 
-//TODO: use parse_macro_input!
 #[proc_macro_derive(Termination, attributes(termination))]
 pub fn derive_termination(steam: TokenStream) -> TokenStream {
     match _derive_termination(steam) {
@@ -32,4 +31,15 @@ pub fn derive_termination_full(steam: TokenStream) -> TokenStream {
         Ok(stream) => stream,
         Err(err) => err.to_compile_error().into(),
     }
+}
+
+fn pull_up_results<T, E, I>(results: I) -> Result<Vec<T>, E> where I: IntoIterator<Item = Result<T, E>> {
+    let mut items =  Vec::new();
+    for result in results {
+        match result {
+            Ok(item) => items.push(item),
+            Err(error) => return Err(error),
+        }
+    }
+    Ok(items)
 }
