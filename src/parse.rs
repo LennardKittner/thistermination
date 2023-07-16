@@ -27,10 +27,10 @@ pub struct FromAttribute {
 
 pub fn parse_helper_attributes<'a>(variants: impl Iterator<Item = &'a Variant>) -> Result<Vec<ParsedAttribute>, Error> {
     pull_up_results(variants.map(|variant| {
-        parse_attributes(variant, &variant.attrs)
+        let (exit_code, message) = parse_attributes(&variant.attrs)?;
+        Ok(ParsedAttribute { variant: variant.clone(), exit_code, message })
     }))
 }
-
 
 pub fn parse_from_attribute<'a>(variants: impl Iterator<Item = &'a Variant>) -> Result<Vec<FromAttribute>, Error> {
     pull_up_results(variants.map(|variant| {
@@ -79,57 +79,6 @@ pub fn check_for_unique_types(attributes: &[FromAttribute]) -> Result<(), Error>
     Ok(())
 }
 
-//TODO: also validate attribute string
-fn parse_attributes(variant: &Variant, attributes: &[Attribute]) -> Result<ParsedAttribute, Error> {
-    let mut found_attribute = false;
-    let mut parsed_attribute = ParsedAttribute {
-        variant: variant.clone(),
-        exit_code: None,
-        message: None
-    };
-    for attribute in attributes {
-        if let Some(ident) = attribute.path().get_ident() {
-            if *ident == "from" {
-                return Err(Error::new_spanned(attribute, "#[from] can only be used on fields and with TerminationFull"));
-            }
-            if *ident != "termination" {
-                continue;
-            }
-            if found_attribute {
-                return Err(Error::new(ident.span(), "only one #[termination(...)] attribute per enum variant is allowed"));
-            }
-            found_attribute = true;
-        } else {
-            return Err(Error::new_spanned(attribute, "identifier expected"));
-        }
-        attribute.parse_nested_meta(|meta| {
-            if let Some(ident) = meta.path.get_ident() {
-                if *ident == "msg" {
-                    if parsed_attribute.message.is_none() {
-                        parsed_attribute.message = Some(parse_message(&meta)?);
-                        return Ok(());
-                    } else {
-                        return Err(Error::new(ident.span(), "Only one msg per enum variant is allowed."));
-                    }
-                } else if *ident == "exit_code" {
-                    if parsed_attribute.exit_code.is_none() {
-                        parsed_attribute.exit_code = Some(parse_exit_code(&meta)?);
-                        return Ok(());
-                    } else {
-                        return Err(Error::new(ident.span(), "Only one exit_code per enum variant is allowed."));
-                    }
-                } else if *ident == "from" {
-                    return Err(Error::new(ident.span(), "from can only be used on fields and with TerminationFull"));
-                }
-            } else {
-                return Err(meta.error("identifier expected"));
-            }
-            Err(meta.error(format!("unrecognized attribute {}", meta.path.get_ident().unwrap())))
-        })?;
-    }
-    Ok(parsed_attribute)
-}
-
 fn parse_exit_code(meta: &ParseNestedMeta<'_>) -> Result<ExitCodeAttribute, Error> {
     let content;
     parenthesized!(content in meta.input);
@@ -149,4 +98,52 @@ fn parse_message(meta: &ParseNestedMeta<'_>) -> Result<MessageAttribute, Error> 
         args.push(arg);
     }
     Ok(MessageAttribute { format_string: lit.value(), format_string_arguments: args })
+}
+
+//TODO: also validate attribute string
+pub fn parse_attributes(attributes: &[Attribute]) -> Result<(Option<ExitCodeAttribute>, Option<MessageAttribute>), Error> {
+    let mut found_attribute = false;
+    let mut exit_code = None;
+    let mut message = None;
+    for attribute in attributes {
+        if let Some(ident) = attribute.path().get_ident() {
+            if *ident == "from" {
+                return Err(Error::new_spanned(attribute, "#[from] can only be used on fields and with TerminationFull"));
+            }
+            if *ident != "termination" {
+                continue;
+            }
+            if found_attribute {
+                return Err(Error::new(ident.span(), "only one #[termination(...)] attribute per enum variant is allowed"));
+            }
+            found_attribute = true;
+        } else {
+            return Err(Error::new_spanned(attribute, "identifier expected"));
+        }
+        attribute.parse_nested_meta(|meta| {
+            if let Some(ident) = meta.path.get_ident() {
+                if *ident == "msg" {
+                    if message.is_none() {
+                        message = Some(parse_message(&meta)?);
+                        return Ok(());
+                    } else {
+                        return Err(Error::new(ident.span(), "Only one msg per enum variant is allowed."));
+                    }
+                } else if *ident == "exit_code" {
+                    if exit_code.is_none() {
+                        exit_code = Some(parse_exit_code(&meta)?);
+                        return Ok(());
+                    } else {
+                        return Err(Error::new(ident.span(), "Only one exit_code per enum variant is allowed."));
+                    }
+                } else if *ident == "from" {
+                    return Err(Error::new(ident.span(), "from can only be used on fields and with TerminationFull"));
+                }
+            } else {
+                return Err(meta.error("identifier expected"));
+            }
+            Err(meta.error(format!("unrecognized attribute {}", meta.path.get_ident().unwrap())))
+        })?;
+    }
+    Ok((exit_code, message))
 }
