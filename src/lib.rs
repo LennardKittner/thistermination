@@ -9,6 +9,7 @@ mod termination_full;
 mod code_generation;
 mod parse;
 
+//TODO: attribute above enum
 #[proc_macro_derive(Termination, attributes(termination))]
 pub fn derive_termination(steam: TokenStream) -> TokenStream {
     match _derive_termination(steam) {

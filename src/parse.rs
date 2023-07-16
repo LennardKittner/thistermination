@@ -1,3 +1,5 @@
+use std::collections::HashSet;
+
 use quote::ToTokens;
 use syn::{Attribute, parenthesized, LitStr, LitInt, Token, Error, meta::ParseNestedMeta, Type, Variant, Expr};
 
@@ -29,6 +31,7 @@ pub fn parse_helper_attributes<'a>(variants: impl Iterator<Item = &'a Variant>) 
     }))
 }
 
+
 pub fn parse_from_attribute<'a>(variants: impl Iterator<Item = &'a Variant>) -> Result<Vec<FromAttribute>, Error> {
     pull_up_results(variants.map(|variant| {
         let mut field_type = None;
@@ -59,6 +62,21 @@ pub fn parse_from_attribute<'a>(variants: impl Iterator<Item = &'a Variant>) -> 
         }
         Ok(FromAttribute { variant: variant.clone(), from_type: field_type})
     }))
+}
+
+pub fn check_for_unique_types(attributes: &[FromAttribute]) -> Result<(), Error> {
+    let mut types = HashSet::new();
+    for attribute in attributes {
+        if let Some(from_type) = &attribute.from_type {
+            let type_string = from_type.to_token_stream().to_string();
+            if !types.contains(&type_string) {
+                types.insert(type_string);
+            } else {
+                return Err(Error::new_spanned(&attribute.variant, "cannot use #[from] because another variant has the same type annotated with #[from]."));
+            }
+        }
+    }
+    Ok(())
 }
 
 //TODO: also validate attribute string

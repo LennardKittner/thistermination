@@ -3,7 +3,7 @@ use syn::{DeriveInput, Data, Error};
 use proc_macro::TokenStream;
 use quote::quote;
 
-use crate::{code_generation::{generate_termination_trait, generate_debug_trait, generate_display_trait, generate_error_trait, generate_from_traits}, parse::{parse_from_attribute, parse_helper_attributes}};
+use crate::{code_generation::{generate_termination_trait, generate_debug_trait, generate_display_trait, generate_error_trait, generate_from_traits}, parse::{parse_from_attribute, parse_helper_attributes, check_for_unique_types}};
 
 pub fn _derive_termination_full(steam: TokenStream) -> Result<TokenStream, Error> {
   let ast: DeriveInput = syn::parse(steam).unwrap();
@@ -18,6 +18,7 @@ pub fn _derive_termination_full(steam: TokenStream) -> Result<TokenStream, Error
     let termination_trait = generate_termination_trait(name, &parse_helper_attributes);
     let error_trait = generate_error_trait(name);
     let from_attributes = parse_from_attribute(variants.iter())?;
+    check_for_unique_types(&from_attributes)?;
     let from_traits = generate_from_traits(name, &from_attributes);
 
     let generate = quote! {
