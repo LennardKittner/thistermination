@@ -12,7 +12,7 @@ pub struct ParsedAttribute {
 }
 
 pub struct MessageAttribute {
-    pub format_string: String,
+    pub format_string_lit: LitStr,
     pub format_string_arguments: Vec<Expr>,
 }
 
@@ -97,10 +97,9 @@ fn parse_message(meta: &ParseNestedMeta<'_>) -> Result<MessageAttribute, Error> 
         let arg: Expr = content.parse()?;
         args.push(arg);
     }
-    Ok(MessageAttribute { format_string: lit.value(), format_string_arguments: args })
+    Ok(MessageAttribute { format_string_lit: lit, format_string_arguments: args })
 }
 
-//TODO: also validate attribute string
 pub fn parse_attributes(attributes: &[Attribute]) -> Result<(Option<ExitCodeAttribute>, Option<MessageAttribute>), Error> {
     let mut found_attribute = false;
     let mut exit_code = None;
@@ -147,3 +146,65 @@ pub fn parse_attributes(attributes: &[Attribute]) -> Result<(Option<ExitCodeAttr
     }
     Ok((exit_code, message))
 }
+
+//I want to keep it but it is not needed anymore
+// requires syn = { version = "", features = ["full"] }
+// fn validate_format_string(lit_string: &LitStr, args: &[Expr]) -> Result<(), Error> {
+//     struct Argument<'a> {
+//         used: bool,
+//         name: String,
+//         expr: &'a Expr,
+//     }
+//     let mut used_args = Vec::new();
+//     let format_string = lit_string.value();
+//     let mut named_references = HashSet::new();
+//     let mut num_pos_references = 0;
+//     let mut unnamed_references = HashSet::new();
+//     let mut max_unnamed_reference = -1;
+//     for expr in args {
+//         if let Expr::Assign(ExprAssign { left, .. }) = expr {
+//             if let Expr::Path(path) = &**left {
+//                 if let Some(segment) = path.path.segments.first() {
+//                     used_args.push(Argument { used: false, name: segment.ident.to_string(), expr })
+//                 }
+//             }
+//         } else {
+//             used_args.push(Argument { used: false, name: "".to_string(), expr })
+//         }
+//     }
+//     let regex_unnamed = Regex::new(r#"(?:\{(?:(\d+)(?::[^\}]*)?)\})"#).expect("parsing regex");
+//     for capture in regex_unnamed.captures_iter(&format_string) {
+//         let i: i32 = capture.get(1).expect("the regex always produces one capture group").as_str().parse().expect("safe because of the regex");
+//         if i > max_unnamed_reference {
+//             max_unnamed_reference = i;
+//         }
+//         unnamed_references.insert(i);
+//     }
+//     let regex_pos = Regex::new(r#"(\{(?:(?:)?(?::[^\}]*)?)\})"#).expect("parsing regex");
+//     for _ in regex_pos.captures_iter(&format_string) {
+//         num_pos_references += 1;
+//     }
+//     let regex_named = Regex::new(r#"(?:\{(?:([^\}, :]*[a-zA-Z][^\}, :]*)(?::[^\}]*)?)\})"#).expect("parsing regex");
+//     for capture in regex_named.captures_iter(&format_string) {
+//         named_references.insert(capture.get(1).expect("the regex always produces one capture group").as_str());
+//     }
+//     if num_pos_references > used_args.len() as i32 {
+//         return Err(Error::new_spanned(lit_string, "unused positional argument"));
+//     }
+//     if max_unnamed_reference > used_args.len() as  i32 -1 {
+//         return Err(Error::new_spanned(lit_string, "out of range"));
+//     }
+//     for arg in used_args.iter_mut() {
+//         arg.used = named_references.contains(arg.name.as_str());
+//     }
+//     for reference in 0..num_pos_references {
+//         used_args[reference as usize].used = true;
+//     }
+//     for reference in unnamed_references.iter() {
+//         used_args[*reference as usize].used = true;
+//     }
+//     if let Some(arg) = used_args.iter().find(|arg| !arg.used) {
+//         return Err(Error::new_spanned(arg.expr, "unused argument"));
+//     }
+//     Ok(())
+// }

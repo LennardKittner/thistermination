@@ -1,5 +1,5 @@
 use regex::Regex;
-use syn::{FieldsNamed, FieldsUnnamed, Error};
+use syn::{FieldsNamed, FieldsUnnamed, Error, LitStr};
 use quote::quote;
 use proc_macro2::{TokenStream as TokenStream2, Ident, Span};
 
@@ -132,15 +132,15 @@ fn termination_impl_unit(name: &Ident, variant_name: &Ident, exit_code: &Option<
 
 fn message_impl_named(name: &Ident, variant_name: &Ident, fields: &FieldsNamed, message: &Option<MessageAttribute>) -> TokenStream2 {
     let field_names = fields.named.iter().map(|field| &field.ident);
-    if let Some(MessageAttribute { format_string, format_string_arguments, .. }) = message {
-        quote! { #name::#variant_name { #(ref #field_names),* } => write!(f, #format_string, #(#format_string_arguments),*), }
+    if let Some(MessageAttribute { format_string_lit, format_string_arguments }) = message {
+        quote! { #name::#variant_name { #(ref #field_names),* } => write!(f, #format_string_lit, #(#format_string_arguments),*), }
     } else {
         quote! { #name::#variant_name { #(ref #field_names),* } => write!(f, "{}", self), }
     }
 }
 
 fn get_formatted_string_with_fields(msg: &str, prefix: &str) -> String {
-    let regex = Regex::new(r#"(?:\{(?:(\d+)(?::[^\}]+)?)\})"#).expect("parsing regex");
+    let regex = Regex::new(r#"(?:\{(?:(\d+)(?::[^\}]*)?)\})"#).expect("parsing regex");
     regex.replace_all(msg, |caps: &regex::Captures| {
         let field = caps.get(1).expect("the regex always produces one capture group").as_str();
         format!("{{{}{}}}",prefix, field)
@@ -151,17 +151,18 @@ fn message_impl_unnamed(name: &Ident, variant_name: &Ident, fields: &FieldsUnnam
     let field_names = fields.unnamed.iter().enumerate().map(|(i, _)| {
         syn::Ident::new(&format!("__{}", i), Span::call_site())
     });
-    if let Some(MessageAttribute { format_string, format_string_arguments, .. }) = message {
-        let format_string = get_formatted_string_with_fields(format_string, "__");
-        quote! { #name::#variant_name(#(#field_names),*) => write!(f, #format_string, #(#format_string_arguments),*), }
+    if let Some(MessageAttribute { format_string_lit, format_string_arguments, .. }) = message {
+        let format_string = get_formatted_string_with_fields(&format_string_lit.value(), "__");
+        let updated_lit = LitStr::new(&format_string, format_string_lit.span());
+        quote! { #name::#variant_name(#(#field_names),*) => write!(f, #updated_lit, #(#format_string_arguments),*), }
     } else {
         quote! { #name::#variant_name(#(#field_names),*) => write!(f, "{}", self), }
     }
 }
 
 fn message_impl_unit(name: &Ident, variant_name: &Ident, message: &Option<MessageAttribute>) -> TokenStream2 {
-    if let Some(MessageAttribute { format_string, format_string_arguments, .. }) = message {
-        quote! { #name::#variant_name => write!(f, #format_string, #(#format_string_arguments),*), }
+    if let Some(MessageAttribute { format_string_lit, format_string_arguments, .. }) = message {
+        quote! { #name::#variant_name => write!(f, #format_string_lit, #(#format_string_arguments),*), }
     } else {
         quote! { #name::#variant_name => write!(f, "{}", self), }
     }
