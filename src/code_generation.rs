@@ -135,7 +135,9 @@ fn message_impl_named(name: &Ident, variant_name: &Ident, fields: &FieldsNamed, 
     if let Some(MessageAttribute { format_string_lit, format_string_arguments }) = message {
         quote! { #name::#variant_name { #(ref #field_names),* } => write!(f, #format_string_lit, #(#format_string_arguments),*), }
     } else {
-        quote! { #name::#variant_name { #(ref #field_names),* } => write!(f, "{}", self), }
+        //This causes potential error to appear at the enum variant.
+        let self_ident = Ident::new("self", variant_name.span());
+        quote! { #name::#variant_name { #(ref #field_names),* } => write!(f, "{}", #self_ident), }
     }
 }
 
@@ -156,7 +158,9 @@ fn message_impl_unnamed(name: &Ident, variant_name: &Ident, fields: &FieldsUnnam
         let updated_lit = LitStr::new(&format_string, format_string_lit.span());
         quote! { #name::#variant_name(#(#field_names),*) => write!(f, #updated_lit, #(#format_string_arguments),*), }
     } else {
-        quote! { #name::#variant_name(#(#field_names),*) => write!(f, "{}", self), }
+        //This causes potential error to appear at the enum variant.
+        let self_ident = Ident::new("self", variant_name.span());
+        quote! { #name::#variant_name(#(#field_names),*) => write!(f, "{}", #self_ident), }
     }
 }
 
@@ -164,6 +168,8 @@ fn message_impl_unit(name: &Ident, variant_name: &Ident, message: &Option<Messag
     if let Some(MessageAttribute { format_string_lit, format_string_arguments, .. }) = message {
         quote! { #name::#variant_name => write!(f, #format_string_lit, #(#format_string_arguments),*), }
     } else {
-        quote! { #name::#variant_name => write!(f, "{}", self), }
+        //This causes potential error to appear at the enum variant.
+        let self_ident = Ident::new("self", variant_name.span());
+        quote! { #name::#variant_name => write!(f, "{}", #self_ident), }
     }
 }
