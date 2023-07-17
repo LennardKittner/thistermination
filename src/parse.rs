@@ -142,7 +142,7 @@ pub fn parse_attributes(attributes: &[Attribute]) -> Result<(Option<ExitCodeAttr
             } else {
                 return Err(meta.error("identifier expected"));
             }
-            Err(meta.error(format!("unrecognized attribute {}", meta.path.get_ident().unwrap())))
+            Err(meta.error(format!("unrecognized attribute {}", meta.path.get_ident().expect("should never happen because of the if before"))))
         })?;
     }
     Ok((exit_code, message))

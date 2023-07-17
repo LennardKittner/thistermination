@@ -80,7 +80,7 @@ pub fn generate_from_traits(name: &Ident, attributes: &[FromAttribute]) -> Token
         if let Some(f_type) = &attribute.from_type {
             let fn_impl = match &attribute.variant.fields {
                 syn::Fields::Named(fields) => {
-                    let field_name = fields.named.first().unwrap().ident.as_ref().unwrap();
+                    let field_name = fields.named.first().expect("from with no fields is checked before").ident.as_ref().expect("field without ident?");
                     quote! { #name::#variant_name { #field_name: value } }
                 }
                 syn::Fields::Unnamed(_) => quote! { #name::#variant_name(value) },
@@ -140,9 +140,9 @@ fn message_impl_named(name: &Ident, variant_name: &Ident, fields: &FieldsNamed, 
 }
 
 fn get_formatted_string_with_fields(msg: &str, prefix: &str) -> String {
-    let regex = Regex::new(r#"(?:\{(?:(\d+)(?::[^\}]+)?)\})"#).unwrap();
+    let regex = Regex::new(r#"(?:\{(?:(\d+)(?::[^\}]+)?)\})"#).expect("parsing regex");
     regex.replace_all(msg, |caps: &regex::Captures| {
-        let field = caps.get(1).unwrap().as_str();
+        let field = caps.get(1).expect("the regex always produces one capture group").as_str();
         format!("{{{}{}}}",prefix, field)
     }).to_string()
 }

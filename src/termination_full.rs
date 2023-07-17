@@ -1,4 +1,3 @@
-use core::panic;
 use syn::{DeriveInput, Data, Error};
 use proc_macro::TokenStream;
 use quote::quote;
@@ -6,11 +5,11 @@ use quote::quote;
 use crate::{code_generation::{generate_termination_trait, generate_debug_trait, generate_display_trait, generate_error_trait, generate_from_traits}, parse::{parse_from_attribute, parse_helper_attributes, check_for_unique_types, parse_attributes}};
 
 pub fn _derive_termination_full(steam: TokenStream) -> Result<TokenStream, Error> {
-    let ast: DeriveInput = syn::parse(steam).unwrap();
+    let ast: DeriveInput = syn::parse(steam)?;
     let name = &ast.ident;
     let variants = match ast.data {
         Data::Enum(ref data) => &data.variants,
-        _ => panic!("thistermination can currently only be derived on enums"),
+        _ => return Err(Error::new_spanned(name, "thistermination can currently only be derived on enums"))
     };
     //TODO: use default values
     let (_, _) = parse_attributes(&ast.attrs)?;
