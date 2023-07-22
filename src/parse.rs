@@ -5,6 +5,17 @@ use syn::{Attribute, parenthesized, LitStr, LitInt, Token, Error, meta::ParseNes
 
 use crate::pull_up_results;
 
+pub struct Defaults {
+    pub exit_code: Option<ExitCodeAttribute>,
+    pub message: Option<MessageAttribute>,
+}
+
+impl From<(Option<ExitCodeAttribute>, Option<MessageAttribute>)> for Defaults {
+    fn from(value: (Option<ExitCodeAttribute>, Option<MessageAttribute>)) -> Self {
+        Self { exit_code: value.0, message: value.1 }
+    }
+}
+
 pub struct ParsedAttribute {
     pub variant: Variant,
     pub exit_code: Option<ExitCodeAttribute>,

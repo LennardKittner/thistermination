@@ -3,15 +3,15 @@ use syn::{FieldsNamed, FieldsUnnamed, Error, LitStr};
 use quote::quote;
 use proc_macro2::{TokenStream as TokenStream2, Ident, Span};
 
-use crate::{parse::{MessageAttribute, ExitCodeAttribute, FromAttribute, ParsedAttribute}, pull_up_results};
+use crate::{parse::{MessageAttribute, ExitCodeAttribute, FromAttribute, ParsedAttribute, Defaults}, pull_up_results};
 
-pub fn generate_debug_trait(name: &Ident, attributes: &[ParsedAttribute]) -> TokenStream2 {
+pub fn generate_debug_trait(name: &Ident, attributes: &[ParsedAttribute], defaults: &Defaults) -> TokenStream2 {
     let debug_impl = attributes.iter().map(|attribute| {
         let variant_name = &attribute.variant.ident;
         match &attribute.variant.fields {
-            syn::Fields::Named(f) => message_impl_named(name, variant_name, f, &attribute.message),
-            syn::Fields::Unnamed(f) => message_impl_unnamed(name, variant_name, f, &attribute.message),
-            syn::Fields::Unit => message_impl_unit(name, variant_name, &attribute.message),
+            syn::Fields::Named(f) => message_impl_named(name, variant_name, f, &attribute.message, defaults),
+            syn::Fields::Unnamed(f) => message_impl_unnamed(name, variant_name, f, &attribute.message, defaults),
+            syn::Fields::Unit => message_impl_unit(name, variant_name, &attribute.message, defaults),
         }
     });
     quote! {
@@ -25,13 +25,13 @@ pub fn generate_debug_trait(name: &Ident, attributes: &[ParsedAttribute]) -> Tok
     }
 }
 
-pub fn generate_termination_trait(name: &Ident, attributes: &[ParsedAttribute]) -> TokenStream2 {
+pub fn generate_termination_trait(name: &Ident, attributes: &[ParsedAttribute], defaults: &Defaults) -> TokenStream2 {
     let termination_impl = attributes.iter().map(|attribute| {
     let variant_name = &attribute.variant.ident;
     match &attribute.variant.fields {
-            syn::Fields::Named(f) => termination_impl_named(name, variant_name, f, &attribute.exit_code),
-            syn::Fields::Unnamed(f) => termination_impl_unnamed(name, variant_name, f, &attribute.exit_code),
-            syn::Fields::Unit => termination_impl_unit(name, variant_name, &attribute.exit_code),
+            syn::Fields::Named(f) => termination_impl_named(name, variant_name, f, &attribute.exit_code, defaults),
+            syn::Fields::Unnamed(f) => termination_impl_unnamed(name, variant_name, f, &attribute.exit_code, defaults),
+            syn::Fields::Unit => termination_impl_unit(name, variant_name, &attribute.exit_code, defaults),
         }
     });
     quote! {
@@ -45,16 +45,16 @@ pub fn generate_termination_trait(name: &Ident, attributes: &[ParsedAttribute]) 
     }
 }
 
-pub fn generate_display_trait(name: &Ident, attributes: &[ParsedAttribute]) -> Result<TokenStream2, Error> {
+pub fn generate_display_trait(name: &Ident, attributes: &[ParsedAttribute], defaults: &Defaults) -> Result<TokenStream2, Error> {
     let display_impl = pull_up_results(attributes.iter().map(|attribute| {
         let variant_name = &attribute.variant.ident;
-        if attribute.message.is_none() {
+        if attribute.message.is_none() && defaults.message.is_none() {
             return Err(Error::new_spanned(&attribute.variant, "missing #[termination(msg(...))] attribute"));
         }
         Ok(match &attribute.variant.fields {
-            syn::Fields::Named(f) => message_impl_named(name, variant_name, f, &attribute.message),
-            syn::Fields::Unnamed(f) => message_impl_unnamed(name, variant_name, f, &attribute.message),
-            syn::Fields::Unit => message_impl_unit(name, variant_name, &attribute.message),
+            syn::Fields::Named(f) => message_impl_named(name, variant_name, f, &attribute.message, defaults),
+            syn::Fields::Unnamed(f) => message_impl_unnamed(name, variant_name, f, &attribute.message, defaults),
+            syn::Fields::Unit => message_impl_unit(name, variant_name, &attribute.message, defaults),
         })
     }))?;
     Ok(quote! {
@@ -84,7 +84,7 @@ pub fn generate_from_traits(name: &Ident, attributes: &[FromAttribute]) -> Token
                     quote! { #name::#variant_name { #field_name: value } }
                 }
                 syn::Fields::Unnamed(_) => quote! { #name::#variant_name(value) },
-                syn::Fields::Unit => panic!("should never happen"),
+                syn::Fields::Unit => panic!("from on unit variant should never happen"),
             };
             quote! {
                 impl std::convert::From<#f_type> for #name {
@@ -102,37 +102,45 @@ pub fn generate_from_traits(name: &Ident, attributes: &[FromAttribute]) -> Token
     }
 }
 
-fn termination_impl_named(name: &Ident, variant_name: &Ident, fields: &FieldsNamed, exit_code: &Option<ExitCodeAttribute>) -> TokenStream2 {
+fn termination_impl_named(name: &Ident, variant_name: &Ident, fields: &FieldsNamed, exit_code: &Option<ExitCodeAttribute>, defaults: &Defaults) -> TokenStream2 {
     let field_names = fields.named.iter().map(|field| &field.ident);
     if let Some(ExitCodeAttribute { exit_code, .. }) = exit_code {
         quote! { #name::#variant_name { #(ref #field_names),* } => #exit_code.into(), }
-    } else { 
+    } else if let Some(ExitCodeAttribute { exit_code, .. }) = defaults.exit_code {
+        quote! { #name::#variant_name { #(ref #field_names),* } => #exit_code.into(), }
+    } else {
         quote! { #name::#variant_name { #(ref #field_names),* } => std::process::ExitCode::FAILURE, }
     }
 }
 
-fn termination_impl_unnamed(name: &Ident, variant_name: &Ident, fields: &FieldsUnnamed, exit_code: &Option<ExitCodeAttribute>) -> TokenStream2 {
+fn termination_impl_unnamed(name: &Ident, variant_name: &Ident, fields: &FieldsUnnamed, exit_code: &Option<ExitCodeAttribute>, defaults: &Defaults) -> TokenStream2 {
     let field_names = fields.unnamed.iter().enumerate().map(|(i, _)| {
         syn::Ident::new(&format!("__{}", i), Span::call_site())
     });
     if let Some(ExitCodeAttribute { exit_code, .. }) = exit_code {
+        quote! { #name::#variant_name( #(#field_names),* ) => #exit_code.into(), }
+    } else if let Some(ExitCodeAttribute { exit_code, .. }) = defaults.exit_code {
         quote! { #name::#variant_name( #(#field_names),* ) => #exit_code.into(), }
     } else { 
         quote! { #name::#variant_name( #(#field_names),* ) => std::process::ExitCode::FAILURE, }
     }
 }
 
-fn termination_impl_unit(name: &Ident, variant_name: &Ident, exit_code: &Option<ExitCodeAttribute>) -> TokenStream2 {
+fn termination_impl_unit(name: &Ident, variant_name: &Ident, exit_code: &Option<ExitCodeAttribute>, defaults: &Defaults) -> TokenStream2 {
     if let Some(ExitCodeAttribute { exit_code, .. }) = exit_code {
+        quote! { #name::#variant_name => #exit_code.into(), }
+    } else if let Some(ExitCodeAttribute { exit_code, .. }) = defaults.exit_code {
         quote! { #name::#variant_name => #exit_code.into(), }
     } else { 
         quote! { #name::#variant_name => std::process::ExitCode::FAILURE, }
     }
 }
 
-fn message_impl_named(name: &Ident, variant_name: &Ident, fields: &FieldsNamed, message: &Option<MessageAttribute>) -> TokenStream2 {
+fn message_impl_named(name: &Ident, variant_name: &Ident, fields: &FieldsNamed, message: &Option<MessageAttribute>, defaults: &Defaults) -> TokenStream2 {
     let field_names = fields.named.iter().map(|field| &field.ident);
     if let Some(MessageAttribute { format_string_lit, format_string_arguments }) = message {
+        quote! { #name::#variant_name { #(ref #field_names),* } => write!(f, #format_string_lit, #(#format_string_arguments),*), }
+    } else if let Some(MessageAttribute { format_string_lit, format_string_arguments }) = &defaults.message {
         quote! { #name::#variant_name { #(ref #field_names),* } => write!(f, #format_string_lit, #(#format_string_arguments),*), }
     } else {
         //This causes potential error to appear at the enum variant.
@@ -149,11 +157,15 @@ fn get_formatted_string_with_fields(msg: &str, prefix: &str) -> String {
     }).to_string()
 }
 
-fn message_impl_unnamed(name: &Ident, variant_name: &Ident, fields: &FieldsUnnamed, message: &Option<MessageAttribute>) -> TokenStream2 {
+fn message_impl_unnamed(name: &Ident, variant_name: &Ident, fields: &FieldsUnnamed, message: &Option<MessageAttribute>, defaults: &Defaults) -> TokenStream2 {
     let field_names = fields.unnamed.iter().enumerate().map(|(i, _)| {
         syn::Ident::new(&format!("__{}", i), Span::call_site())
     });
     if let Some(MessageAttribute { format_string_lit, format_string_arguments, .. }) = message {
+        let format_string = get_formatted_string_with_fields(&format_string_lit.value(), "__");
+        let updated_lit = LitStr::new(&format_string, format_string_lit.span());
+        quote! { #name::#variant_name(#(#field_names),*) => write!(f, #updated_lit, #(#format_string_arguments),*), }
+    } else if let Some(MessageAttribute { format_string_lit, format_string_arguments }) = &defaults.message {
         let format_string = get_formatted_string_with_fields(&format_string_lit.value(), "__");
         let updated_lit = LitStr::new(&format_string, format_string_lit.span());
         quote! { #name::#variant_name(#(#field_names),*) => write!(f, #updated_lit, #(#format_string_arguments),*), }
@@ -164,8 +176,10 @@ fn message_impl_unnamed(name: &Ident, variant_name: &Ident, fields: &FieldsUnnam
     }
 }
 
-fn message_impl_unit(name: &Ident, variant_name: &Ident, message: &Option<MessageAttribute>) -> TokenStream2 {
+fn message_impl_unit(name: &Ident, variant_name: &Ident, message: &Option<MessageAttribute>, defaults: &Defaults) -> TokenStream2 {
     if let Some(MessageAttribute { format_string_lit, format_string_arguments, .. }) = message {
+        quote! { #name::#variant_name => write!(f, #format_string_lit, #(#format_string_arguments),*), }
+    } else if let Some(MessageAttribute { format_string_lit, format_string_arguments }) = &defaults.message {
         quote! { #name::#variant_name => write!(f, #format_string_lit, #(#format_string_arguments),*), }
     } else {
         //This causes potential error to appear at the enum variant.
