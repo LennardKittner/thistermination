@@ -119,4 +119,4 @@ To add the `std::process::Termination` trait to an enum, you can use one of thre
 
 ## Comparison To thiserror
 
-`#[derive(TerminationFull)]` can be used instead of thiserror as it offers many of the basic features of thiserror. However, it lacks some features like `#[source]`, `#[backtrace]`, the ability to automatically detect a backtrace, and #[error(transparent)]. If any of these features are required, you can use thiserror in combination with `#[derive(Termination)]`.
+`#[derive(TerminationFull)]` can be used instead of thiserror as it offers many of the basic features of thiserror. However, it lacks some features like `#[source]`, `#[backtrace]`, the ability to automatically detect a backtrace, and `#[error(transparent)]`. If any of these features are required, you can use thiserror in combination with `#[derive(Termination)]`.
