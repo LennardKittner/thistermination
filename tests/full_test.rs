@@ -1,6 +1,7 @@
 use std::{process::{Termination, ExitCode}, num::ParseIntError, str::ParseBoolError};
 use thistermination::TerminationFull;
 
+
 #[derive(TerminationFull)]
 enum Test {
     #[termination(msg("unit a"))]
@@ -13,6 +14,12 @@ enum Test {
     NamedA{#[from] err: ParseBoolError},
     #[termination(msg("named {} {y:?} {x}", "asdf"))]
     NamedB{x: u32, y: u8},
+}
+
+#[derive(TerminationFull)]
+enum Test2 {
+    #[termination(msg("array: {0:?} with length: {1:?}"))]
+    Debug([u8; 8], usize),
 }
 
 fn throw_error_1() -> Result<u32, Test> {
@@ -69,4 +76,10 @@ fn named_full() {
     assert_eq!(format!("{:?}", named_b), "named asdf 99 2");
     assert_eq!(format!("{}", named_b), "named asdf 99 2");
     assert_eq_exit_code_and_exit_code(named_b.report(), ExitCode::FAILURE);
+}
+
+#[test]
+fn debug_msg() {
+    let a = Test2::Debug([1,2,3,4,5,6,7,8], 4);
+    assert_eq!(format!("{:?}", a), "array: [1, 2, 3, 4, 5, 6, 7, 8] with length: 4")
 }

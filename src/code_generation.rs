@@ -1,9 +1,49 @@
+use core::panic;
+
 use regex::Regex;
 use syn::{FieldsNamed, FieldsUnnamed, Error, LitStr};
 use quote::quote;
 use proc_macro2::{TokenStream as TokenStream2, Ident, Span};
 
 use crate::{parse::{MessageAttribute, ExitCodeAttribute, FromAttribute, ParsedAttribute, Defaults}, pull_up_results};
+
+pub fn generate_empty_debug_trait(name: &Ident) -> TokenStream2 {
+    let enum_name = format!("{}", name);
+    quote!(
+        impl std::fmt::Debug for #name {
+            fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+                write!(f, "{}", #enum_name)
+            }
+        }
+    )
+}
+
+pub fn generate_empty_error_trait(name: &Ident) -> TokenStream2 {
+    quote!(
+        impl std::error::Error for #name {}
+    )
+}
+
+pub fn generate_empty_display_trait(name: &Ident) -> TokenStream2 {
+    let enum_name = format!("{}", name);
+    quote!(
+        impl std::fmt::Display for #name {
+            fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+                write!(f, "{}", #enum_name)
+            }
+        }
+    )
+}
+
+pub fn generate_empty_termination_trait(name: &Ident) -> TokenStream2 {
+    quote!(
+        impl std::process::Termination for #name {
+            fn report(self) -> std::process::ExitCode {
+                std::process::ExitCode::SUCCESS
+            }
+        }
+    )
+}
 
 pub fn generate_debug_trait(name: &Ident, attributes: &[ParsedAttribute], defaults: &Defaults) -> TokenStream2 {
     let debug_impl = attributes.iter().map(|attribute| {
@@ -150,10 +190,11 @@ fn message_impl_named(name: &Ident, variant_name: &Ident, fields: &FieldsNamed, 
 }
 
 fn get_formatted_string_with_fields(msg: &str, prefix: &str) -> String {
-    let regex = Regex::new(r#"(?:\{(?:(\d+)(?::[^\}]*)?)\})"#).expect("parsing regex");
+    let regex = Regex::new(r#"\{(\d+)(:[^}]+)?\}"#).expect("parsing regex");
     regex.replace_all(msg, |caps: &regex::Captures| {
         let field = caps.get(1).expect("the regex always produces one capture group").as_str();
-        format!("{{{}{}}}",prefix, field)
+        let args = caps.get(2).map_or_else(|| "", |m| m.as_str());
+        format!("{{{}{}{}}}",prefix, field, args)
     }).to_string()
 }
 
