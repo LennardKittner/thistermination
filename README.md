@@ -117,6 +117,24 @@ To add the `std::process::Termination` trait to an enum, you can use one of thre
   }
   ```
 
+- You can also change the default values of `exit_code` and `msg` by adding the `#[termination(...)]` helper attribute to the enum itself.
+
+  ```rust
+  #[derive(Error, Termination)]
+  #[termination(exit_code(3), msg("Fatal Error"))]
+  pub enum RequestError {
+      #[error("request failed {0:?}")]
+      RequestFailed(#[from] reqwest::Error),
+      #[error("wrong api key")]
+      WrongAPIKey,
+      #[error("failed with status {0}")]
+      RequestStatusError(u16),
+      #[termination(exit_code(4), msg("exiting failed to load image {error:?}"))]
+      #[error("failed to load image {error:?}")]
+      ImageLoadError{#[from] error: image::ImageError},
+  }
+  ```
+
 ## Comparison To thiserror
 
 `#[derive(TerminationFull)]` can be used instead of thiserror as it offers many of the basic features of thiserror. However, it lacks some features like `#[source]`, `#[backtrace]`, the ability to automatically detect a backtrace, and `#[error(transparent)]`. If any of these features are required, you can use thiserror in combination with `#[derive(Termination)]`.

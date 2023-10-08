@@ -108,6 +108,28 @@
 //!   # }
 //!   ```
 //! 
+//! - You can also change the default values of `exit_code` and `msg` by adding the `#[termination(...)]` helper attribute to the enum itself.
+//!
+//!   ```rust
+//!   # use thistermination::{Termination};
+//!   # use thiserror::Error;
+//!   #[derive(Error, Termination)]
+//!   #[termination(exit_code(3), msg("Fatal Error"))]
+//!   pub enum RequestError {
+//!       #[error("request failed {0:?}")]
+//!       RequestFailed(#[from] reqwest::Error),
+//!       #[error("wrong api key")]
+//!       WrongAPIKey,
+//!       #[error("failed with status {0}")]
+//!       RequestStatusError(u16),
+//!       #[termination(exit_code(4), msg("exiting failed to load image {error:?}"))]
+//!       #[error("failed to load image {error:?}")]
+//!       ImageLoadError{#[from] error: image::ImageError},
+//!   }
+//!   # fn main() -> Result<(), RequestError> {
+//!   #    Err(RequestError::WrongAPIKey)
+//!   # }
+//!   ```
 
 use proc_macro::TokenStream;
 use termination::_derive_termination;
