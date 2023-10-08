@@ -2,7 +2,7 @@ use syn::{DeriveInput, Data, Error};
 use proc_macro::TokenStream;
 use quote::quote;
 
-use crate::{code_generation::{generate_termination_trait, generate_debug_trait, generate_display_trait, generate_error_trait, generate_from_traits}, parse::{parse_from_attribute, parse_helper_attributes, check_for_unique_types, parse_attributes, Defaults}};
+use crate::{code_generation::{generate_termination_trait, generate_debug_trait, generate_display_trait, generate_error_trait, generate_from_traits, generate_empty_debug_trait, generate_empty_display_trait, generate_empty_termination_trait, generate_empty_error_trait}, parse::{parse_from_attribute, parse_helper_attributes, check_for_unique_types, parse_attributes, Defaults}};
 
 pub fn _derive_termination_full(steam: TokenStream) -> Result<TokenStream, Error> {
     let ast: DeriveInput = syn::parse(steam)?;
@@ -11,6 +11,21 @@ pub fn _derive_termination_full(steam: TokenStream) -> Result<TokenStream, Error
         Data::Enum(ref data) => &data.variants,
         _ => return Err(Error::new_spanned(name, "thistermination can currently only be derived on enums"))
     };
+
+    if variants.is_empty() {
+        let debug_trait = generate_empty_debug_trait(name);
+        let display_trait = generate_empty_display_trait(name);
+        let termination_trait = generate_empty_termination_trait(name);
+        let error_trait = generate_empty_error_trait(name);
+        let generate = quote! {
+            #debug_trait
+            #termination_trait
+            #display_trait
+            #error_trait
+        };
+        return Ok(generate.into());
+    }
+
     let defaults: Defaults = parse_attributes(&ast.attrs)?.into();
     let parse_helper_attributes = parse_helper_attributes(variants.iter())?;
     let debug_trait = generate_debug_trait(name, &parse_helper_attributes, &defaults);
